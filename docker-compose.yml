@@ -1,0 +1,98 @@
+x-common: &common
+  build:
+    context: .
+    dockerfile: Dockerfile
+  image: tcct-all-tmd-v1:latest
+  working_dir: /app
+  environment:
+    PYTHONUNBUFFERED: "1"
+    PYTHONPATH: /app
+    NTFY_SERVER: ${NTFY_SERVER:-https://ntfy.sh}
+    NTFY_TOPIC: ${NTFY_TOPIC:-}
+    NTFY_TOKEN: ${NTFY_TOKEN:-}
+  volumes:
+    - ${ALL_TMD_DATA_DIR:-./data}:/data
+
+services:
+  dev:
+    <<: *common
+    volumes:
+      - .:/app
+      - ${ALL_TMD_DATA_DIR:-./data}:/data
+    command: sleep infinity
+
+  ingest-train-dataset:
+    <<: *common
+    profiles: ["ingest"]
+    command:
+      - python
+      - -m
+      - all_tmd.compose_task
+      - ingest-train-dataset-${ALL_TMD_TRIAL_INDEX:-0}
+      - python
+      - -m
+      - all_tmd.cli
+      - --trial-index
+      - ${ALL_TMD_TRIAL_INDEX:-0}
+      - ingest-train-dataset
+
+  ingest-collector:
+    <<: *common
+    profiles: ["ingest"]
+    command:
+      - python
+      - -m
+      - all_tmd.compose_task
+      - ingest-collector-${ALL_TMD_TRIAL_INDEX:-0}
+      - python
+      - -m
+      - all_tmd.cli
+      - --trial-index
+      - ${ALL_TMD_TRIAL_INDEX:-0}
+      - ingest-collector
+
+  features:
+    <<: *common
+    profiles: ["features"]
+    command:
+      - python
+      - -m
+      - all_tmd.compose_task
+      - features-${ALL_TMD_TRIAL_INDEX:-0}
+      - python
+      - -m
+      - all_tmd.cli
+      - --trial-index
+      - ${ALL_TMD_TRIAL_INDEX:-0}
+      - features
+
+  train:
+    <<: *common
+    profiles: ["train"]
+    environment:
+      PYTHONUNBUFFERED: "1"
+      PYTHONPATH: /app
+      NTFY_SERVER: ${NTFY_SERVER:-https://ntfy.sh}
+      NTFY_TOPIC: ${NTFY_TOPIC:-}
+      NTFY_TOKEN: ${NTFY_TOKEN:-}
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-sqlite:////data/all-tmd-work/mlflow.db}
+    command:
+      - python
+      - -m
+      - all_tmd.compose_task
+      - train-${ALL_TMD_TRIAL_INDEX:-0}
+      - python
+      - -m
+      - all_tmd.cli
+      - --trial-index
+      - ${ALL_TMD_TRIAL_INDEX:-0}
+      - train
+
+  mlflow:
+    image: ghcr.io/mlflow/mlflow:v3.14.0
+    profiles: ["mlflow"]
+    ports:
+      - "5002:5002"
+    volumes:
+      - ${ALL_TMD_DATA_DIR:-./data}:/data
+    command: mlflow server --host 0.0.0.0 --port 5002 --backend-store-uri sqlite:////data/all-tmd-work/mlflow.db --default-artifact-root /data/all-tmd-work/mlartifacts
