@@ -1,0 +1,43 @@
+
+[
+  {
+    "train_dataset": "us-tmd",
+    "labels": { "bus": 0, "car": 1, "train": 2 },
+    "features": {
+      "default_window_seconds": 10,
+      "default_step_seconds": 5,
+      "sensors": {
+        "accelerometer": ["mean", "standard_deviation", "range", "minimum"],
+        "gyroscope": ["mean", "standard_deviation", "range", "minimum"],
+        "magnetometer": ["standard_deviation", "range"],
+        "pressure": ["standard_deviation", "range", "delta_from_window_start", "delta_from_session_baseline"]
+      }
+    },
+    "training": {
+      "random_seed": 42,
+      "optuna_trials": 20,
+      "model_families": ["random_forest", "xgboost", "mlp"],
+      "calibration_fraction": 0.5
+    }
+  },
+  {
+    "train_dataset": "nor-tmd",
+    "labels": { "bus": 0, "car": 1, "train": 2 },
+    "features": {
+      "default_window_seconds": 10,
+      "default_step_seconds": 5,
+      "sensors": {
+        "accelerometer": ["mean", "standard_deviation", "range", "minimum"],
+        "gyroscope": ["mean", "standard_deviation", "range", "minimum"],
+        "magnetometer": ["standard_deviation", "range"],
+        "pressure": ["standard_deviation", "range", "delta_from_window_start", "delta_from_session_baseline"]
+      }
+    },
+    "training": {
+      "random_seed": 42,
+      "optuna_trials": 20,
+      "model_families": ["random_forest", "xgboost", "mlp"],
+      "calibration_fraction": 0.5
+    }
+  }
+]
