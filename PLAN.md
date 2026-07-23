@@ -1,12 +1,12 @@
 # All-TMD
-The core ingestion, feature extraction and training pipeline should be based on `us-tmd-v2`. The ingestion steps should reference both `nor-tmd-v2` and `us-tmd-v2`.
+The core ingestion, feature extraction and training pipeline should reference `us-tmd-v2`. The ingestion steps should reference both `nor-tmd-v2` and `us-tmd-v2`.
 
 ## Implementation Requirements / Core Differences from `us-tmd-v2`
-The project code should utilise polymorphism, and must be extensible for another training dataset, and allow adding another dataset adaptation by simpling implementing another concrete implementation, not limited by US-TMD and NOR-TMD dataset.
+The project code should utilise polymorphism, and must be extensible for another training dataset, and allow adding another dataset adaptation by simpling implementing another concrete implementation, not limited by the currently available datasets (US-TMD, NOR-TMD).
 
 The majority of the configuration fields in `model.config.yaml` has been moved to `trials.json`. `trial.json` contains a list of trial configurations.
 
-Phase has been removed from training. Instead, the entry point of this project should be `scripts/run-trials.ps1`. When the script is run, it should first run:
+Phase has been removed from training steps. Instead, the entry point of this project should be `scripts/run-trials.ps1`. When the script is run, it should first run:
 
 ```
 docker compose build
@@ -66,7 +66,7 @@ all-tmd-work/<config-hash>/features/collector/part-000001.parquet
 Feature extraction should also be incremental, similar to raw data ingestion.
 
 ### Training & Testing
-The models should be trained with the dataset specified by `train_dataset` in the `trials.json` objects.
+For each trial, the models should be trained by utilising both the dataset specified by `train_dataset` field in the `trials.json` objects and the collector dataset, just like `adapt` phase in `us-tmd-v2`.
 The models should be tested/evaluated with the collector dataset.
 
 ### Reports
@@ -105,5 +105,5 @@ minimum_samples_per_window = 10 * 30 = 300
 ```
 
 ### Notes
-For any other unspecified implementation details, adapt and copy the implementation from `us-tmd-v2`.
-Let me know if you have any clarifications, questions, or concerns.
+For any other undefined implementation details, adapt the implementation from `us-tmd-v2`.
+For example, `.gitignore`, `.dockerignore`, `.env`, `pyproject.toml`, `requirements.txt`, `docker-compose.yml`, `Dockerfile`, etc. file contents and configurations.
