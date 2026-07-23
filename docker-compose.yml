@@ -75,7 +75,7 @@ services:
       NTFY_SERVER: ${NTFY_SERVER:-https://ntfy.sh}
       NTFY_TOPIC: ${NTFY_TOPIC:-}
       NTFY_TOKEN: ${NTFY_TOKEN:-}
-      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-sqlite:////data/all-tmd-work/mlflow.db}
+      MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow:5002}
     command:
       - python
       - -m
@@ -95,4 +95,26 @@ services:
       - "5002:5002"
     volumes:
       - ${ALL_TMD_DATA_DIR:-./data}:/data
-    command: mlflow server --host 0.0.0.0 --port 5002 --backend-store-uri sqlite:////data/all-tmd-work/mlflow.db --default-artifact-root /data/all-tmd-work/mlartifacts
+    command:
+      - mlflow
+      - server
+      - --host
+      - 0.0.0.0
+      - --port
+      - "5002"
+      - --backend-store-uri
+      - sqlite:////data/all-tmd-work/mlflow.db
+      - --artifacts-destination
+      - /data/all-tmd-work/mlartifacts
+      - --allowed-hosts
+      - mlflow:5002,localhost:*,127.0.0.1:*
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:5002/health')"
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s

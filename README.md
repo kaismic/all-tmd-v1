@@ -16,9 +16,11 @@ Copy-Item .env.example .env
 .\scripts\run-trials.ps1
 ```
 
-`run-trials.ps1` builds the Docker image once, then runs training-dataset
-ingestion, collector ingestion, feature extraction, and training for every
-object in `trials.json`. It stops on the first failing stage.
+`run-trials.ps1` builds the Docker image once, starts the MLflow service and
+waits for it to become healthy, then runs training-dataset ingestion, collector
+ingestion, feature extraction, and training for every object in `trials.json`.
+It stops on the first failing stage and leaves MLflow running so its UI remains
+available.
 
 Each trial object is hashed independently using canonical JSON after removing
 its top-level `training` field. Neither that field (including all its
@@ -96,11 +98,25 @@ and one remains in holdout. Grouped cross-validation still evaluates every
 calibration group exactly once, and Optuna is scored from the combined
 out-of-fold predictions rather than requiring every class in every fold.
 
-MLflow is available at `http://localhost:5002` after:
+MLflow is available at `http://localhost:5002`. `run-trials.ps1` starts it
+automatically; to start it without running trials, use:
 
 ```powershell
-docker compose --profile mlflow up mlflow
+docker compose --profile mlflow up -d --wait mlflow
 ```
+
+Training containers connect to `http://mlflow:5002` on the Compose network.
+The server stores metadata in `/data/all-tmd-work/mlflow.db` and proxies
+artifacts into `/data/all-tmd-work/mlartifacts`, both beneath the configured
+`ALL_TMD_DATA_DIR` host directory.
+
+New runs appear in the `ALL-TMD Transfer v2` experiment. The original
+`ALL-TMD Transfer` experiment remains available as historical metadata, but its
+runs predate persistent artifact storage. Each new run records `metrics.json`,
+the fitted model, Optuna trials, and the split manifest in the **Artifacts**
+tab. The `evaluation` artifact directory also contains raw-count and
+row-normalized collector-holdout confusion-matrix images. Matrix rows are
+actual labels and columns are predicted labels.
 
 ## Direct commands
 

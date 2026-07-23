@@ -18,7 +18,12 @@ from sklearn.metrics import (
 from sklearn.utils.class_weight import compute_sample_weight
 
 from all_tmd.config import PipelineConfig
-from all_tmd.mlflow_utils import log_artifact, log_metrics, start_run
+from all_tmd.mlflow_utils import (
+    log_artifact,
+    log_confusion_matrix,
+    log_metrics,
+    start_run,
+)
 from all_tmd.models import (
     fit_with_optional_sample_weight,
     model_from_params,
@@ -193,13 +198,34 @@ def train(config: PipelineConfig) -> dict[str, Any]:
         study.trials_dataframe().to_csv(trials_path, index=False)
         joblib.dump(final_model, model_path)
         if config.mlflow.enabled:
+            holdout_metrics = metrics["collector_holdout"]
             log_metrics(
-                metrics["collector_holdout"],
+                holdout_metrics,
                 prefix="collector_holdout.",
             )
             log_metrics(
                 {"best_cross_validation_macro_f1": study.best_value},
             )
+            if "confusion_matrix" in holdout_metrics:
+                label_names = [
+                    name
+                    for name, _ in sorted(
+                        config.trial.labels.items(),
+                        key=lambda item: item[1],
+                    )
+                ]
+                log_confusion_matrix(
+                    holdout_metrics["confusion_matrix"],
+                    label_names,
+                    "evaluation/collector-holdout-confusion-matrix.png",
+                )
+                log_confusion_matrix(
+                    holdout_metrics["confusion_matrix"],
+                    label_names,
+                    "evaluation/"
+                    "collector-holdout-confusion-matrix-normalized.png",
+                    normalize=True,
+                )
             for artifact in (metrics_path, trials_path, model_path, split_path):
                 log_artifact(artifact)
     progress(f"Training complete: dataset={source_name}, reports={report_dir}")

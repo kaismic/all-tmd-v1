@@ -1,12 +1,36 @@
 from __future__ import annotations
 
+from contextlib import nullcontext
+
 import pandas as pd
 
 from all_tmd.train import train
 
 
-def test_training_writes_required_reports(config_factory):
-    config = config_factory()
+def test_training_writes_required_reports(config_factory, monkeypatch):
+    config = config_factory(mlflow_enabled=True)
+    logged_artifacts = []
+    logged_confusion_matrices = []
+    monkeypatch.setattr(
+        "all_tmd.train.start_run",
+        lambda _config: nullcontext(),
+    )
+    monkeypatch.setattr(
+        "all_tmd.train.log_metrics",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "all_tmd.train.log_artifact",
+        logged_artifacts.append,
+    )
+    monkeypatch.setattr(
+        "all_tmd.train.log_confusion_matrix",
+        lambda matrix, labels, artifact_file, **kwargs: (
+            logged_confusion_matrices.append(
+                (matrix, labels, artifact_file, kwargs)
+            )
+        ),
+    )
     run_dir = config.run_dir()
     source_dir = run_dir / "features" / "us-tmd"
     collector_dir = run_dir / "features" / "collector"
@@ -50,6 +74,26 @@ def test_training_writes_required_reports(config_factory):
     assert (report_dir / "metrics.json").exists()
     assert (report_dir / "model.joblib").exists()
     assert (report_dir / "optuna-trials.csv").exists()
+    assert {path.name for path in logged_artifacts} == {
+        "metrics.json",
+        "model.joblib",
+        "optuna-trials.csv",
+        "us-tmd.json",
+    }
+    assert [
+        (artifact_file, kwargs.get("normalize", False))
+        for _, _, artifact_file, kwargs in logged_confusion_matrices
+    ] == [
+        ("evaluation/collector-holdout-confusion-matrix.png", False),
+        (
+            "evaluation/collector-holdout-confusion-matrix-normalized.png",
+            True,
+        ),
+    ]
+    assert all(
+        labels == ["bus", "car", "train"]
+        for _, labels, _, _ in logged_confusion_matrices
+    )
 
 
 def _feature_row(

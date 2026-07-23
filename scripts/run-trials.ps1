@@ -21,6 +21,11 @@ try {
         throw "docker compose build failed with exit code $LASTEXITCODE."
     }
 
+    docker compose --profile mlflow up -d --wait mlflow
+    if ($LASTEXITCODE -ne 0) {
+        throw "MLflow failed to start with exit code $LASTEXITCODE."
+    }
+
     for ($index = 0; $index -lt $trials.Count; $index++) {
         $env:ALL_TMD_TRIAL_INDEX = [string]$index
         Write-Host "Running All-TMD trial $($index + 1)/$($trials.Count) (index $index)"

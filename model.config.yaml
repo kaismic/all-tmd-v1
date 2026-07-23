@@ -36,5 +36,5 @@ training:
 
 mlflow:
   enabled: true
-  experiment_name: ALL-TMD Transfer
+  experiment_name: ALL-TMD Transfer v2
   tracking_uri: null

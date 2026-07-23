@@ -19,6 +19,7 @@ def config_factory(tmp_path):
         minimum_trip_seconds: int = 0,
         collector_max_sample_interval_ms: int | None = None,
         calibration_fraction: float = 0.5,
+        mlflow_enabled: bool = False,
     ) -> PipelineConfig:
         sensors = sensors or {"accelerometer": ["mean"]}
         minimum_sampling_rate = minimum_sampling_rate or {
@@ -56,7 +57,7 @@ def config_factory(tmp_path):
                 "xgboost_device": "cpu",
             },
             "mlflow": {
-                "enabled": False,
+                "enabled": mlflow_enabled,
                 "experiment_name": "test",
                 "tracking_uri": None,
             },
