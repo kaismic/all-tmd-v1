@@ -26,8 +26,8 @@ minimum_sampling_rate: # hz
   pressure: 2
 
 training:
-  n_jobs: -1,
-  timeout_seconds: null,
+  n_jobs: -1
+  timeout_seconds: null
   xgboost_device: "cpu"
 
 mlflow:
