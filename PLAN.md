@@ -4,7 +4,7 @@ The core ingestion, feature extraction and training pipeline should reference `u
 ## Implementation Requirements / Core Differences from `us-tmd-v2`
 The project code should utilise polymorphism, and must be extensible for another training dataset, and allow adding another dataset adaptation by simpling implementing another concrete implementation, not limited by the currently available datasets (US-TMD, NOR-TMD).
 
-The majority of the configuration fields in `model.config.yaml` has been moved to `trials.json`. `trial.json` contains a list of trial configurations.
+The majority of the configuration fields in `model.config.yaml` has been moved to `trials.json`. `trials.json` contains a list of trial configurations.
 
 Phase has been removed from training steps. Instead, the entry point of this project should be `scripts/run-trials.ps1`. When the script is run, it should first run:
 
@@ -12,7 +12,7 @@ Phase has been removed from training steps. Instead, the entry point of this pro
 docker compose build
 ```
 
-And iterate each trial objects in `trial.json` file, and for each object, run something similar like:
+And iterate each trial objects in `trials.json` file, and for each object, run something similar like:
 
 ```
 docker compose --profile ingest run --rm ingest-train-dataset
