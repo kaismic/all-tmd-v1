@@ -6,7 +6,7 @@ The project code should utilise polymorphism, and must be extensible for another
 
 The majority of the configuration fields in `model.config.yaml` has been moved to `trials.json`. `trials.json` contains a list of trial configurations.
 
-Phase has been removed from training steps. Instead, the entry point of this project should be `scripts/run-trials.ps1`. When the script is run, it should first run:
+Phase has been removed from training steps. Instead, the entry points of this project should be `scripts/run-trials.ps1` on Windows and `scripts/run-trials.sh` on Linux or macOS. When either script is run, it should first run:
 
 ```
 docker compose build

@@ -16,10 +16,19 @@ Copy-Item .env.example .env
 .\scripts\run-trials.ps1
 ```
 
-`run-trials.ps1` builds the Docker image once, starts the MLflow service and
-waits for it to become healthy, then runs training-dataset ingestion, collector
-ingestion, feature extraction, and training for every object in `trials.json`.
-It stops on the first failing stage and leaves MLflow running so its UI remains
+On Linux or macOS, use the Bash runner instead. It requires either `python3` or
+`jq` to read `trials.json`:
+
+```bash
+cp trials.json.example trials.json
+cp .env.example .env
+bash ./scripts/run-trials.sh
+```
+
+Both runners build the Docker image once, start the MLflow service and wait for
+it to become healthy, then run training-dataset ingestion, collector ingestion,
+feature extraction, and training for every object in `trials.json`. They stop
+on the first failing stage and leave MLflow running so its UI remains
 available.
 
 ## Notifications
@@ -28,7 +37,7 @@ Set `NTFY_TOPIC` in `.env` to enable ntfy notifications. `NTFY_EVENTS` controls
 which completed or failed pipeline events publish a notification:
 
 ```dotenv
-# Notify once when run-trials.ps1 exits. A successful event means all trials ran.
+# Notify once when the trial runner exits. A successful event means all trials ran.
 NTFY_EVENTS=all-trials
 
 # Notify after every training step (once per trial).
@@ -45,9 +54,9 @@ task plus `all-trials`; `none` disables all events without clearing
 `NTFY_TOPIC`. Values are case-insensitive and may be separated by commas or
 spaces.
 
-The `all-trials` event is sent once as `run-trials.ps1` exits. It reports
-success after the script completes all configured trials, or failure if the
-script stops early. Notification delivery is best-effort and does not change a
+The `all-trials` event is sent once as the trial runner exits. It reports success
+after the script completes all configured trials, or failure if the script
+stops early. Notification delivery is best-effort and does not change a
 pipeline task's exit status.
 
 Each trial object is hashed independently using canonical JSON after removing
@@ -126,7 +135,7 @@ and one remains in holdout. Grouped cross-validation still evaluates every
 calibration group exactly once, and Optuna is scored from the combined
 out-of-fold predictions rather than requiring every class in every fold.
 
-MLflow is available at `http://localhost:5002`. `run-trials.ps1` starts it
+MLflow is available at `http://localhost:5002`. Both trial runners start it
 automatically; to start it without running trials, use:
 
 ```powershell
