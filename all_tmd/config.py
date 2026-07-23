@@ -75,10 +75,15 @@ class TrialConfig:
     raw: dict[str, Any]
 
     @property
+    def config_hash_input(self) -> dict[str, Any]:
+        """Return the trial fields that affect ingestion and feature extraction."""
+        return {key: value for key, value in self.raw.items() if key != "training"}
+
+    @property
     def config_hash(self) -> str:
-        """Hash only this trials.json object, as required by the project contract."""
+        """Hash this trial's ingestion and feature-extraction configuration."""
         canonical = json.dumps(
-            self.raw,
+            self.config_hash_input,
             sort_keys=True,
             separators=(",", ":"),
             ensure_ascii=True,
@@ -218,9 +223,19 @@ class PipelineConfig:
             indent=2,
             ensure_ascii=True,
         ) + "\n"
-        if trial_path.exists() and trial_path.read_text(encoding="utf-8") != canonical:
-            raise ValueError(f"Trial hash collision at {trial_path}")
-        if not trial_path.exists():
+        if trial_path.exists():
+            saved_canonical = trial_path.read_text(encoding="utf-8")
+            saved_trial = json.loads(saved_canonical)
+            saved_hash_input = {
+                key: value
+                for key, value in saved_trial.items()
+                if key != "training"
+            }
+            if saved_hash_input != self.trial.config_hash_input:
+                raise ValueError(f"Trial hash collision at {trial_path}")
+        else:
+            saved_canonical = None
+        if saved_canonical != canonical:
             trial_path.write_text(canonical, encoding="utf-8")
         return run_dir
 

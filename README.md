@@ -20,9 +20,12 @@ Copy-Item .env.example .env
 ingestion, collector ingestion, feature extraction, and training for every
 object in `trials.json`. It stops on the first failing stage.
 
-Each trial object is hashed independently using canonical JSON. Fields in
-`model.config.yaml` deliberately do not contribute to the hash. Outputs are
-written beneath:
+Each trial object is hashed independently using canonical JSON after removing
+its top-level `training` field. Neither that field (including all its
+subproperties) nor fields in `model.config.yaml` contribute to the hash, so
+trials that differ only in training settings reuse the same ingested events
+and extracted features. The full current trial remains recorded in
+`trial.json`. Outputs are written beneath:
 
 ```text
 all-tmd-work/<trial-sha256>/

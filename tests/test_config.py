@@ -6,11 +6,15 @@ from dataclasses import replace
 from pathlib import Path
 
 
-def test_hash_is_canonical_json_of_trial_only(config_factory):
+def test_hash_is_canonical_json_of_trial_without_training(config_factory):
     config = config_factory()
     expected = hashlib.sha256(
         json.dumps(
-            config.trial.raw,
+            {
+                key: value
+                for key, value in config.trial.raw.items()
+                if key != "training"
+            },
             sort_keys=True,
             separators=(",", ":"),
             ensure_ascii=True,
@@ -22,6 +26,38 @@ def test_hash_is_canonical_json_of_trial_only(config_factory):
         dataset=replace(config.dataset, work_dir=Path("a-different-work-dir")),
     )
     assert changed_global_config.config_hash == config.config_hash
+
+
+def test_training_fields_do_not_affect_hash_or_cause_collision(config_factory):
+    config = config_factory()
+    changed_training = replace(
+        config,
+        trial=replace(
+            config.trial,
+            training=replace(
+                config.trial.training,
+                random_seed=123,
+                optuna_trials=25,
+            ),
+            raw={
+                **config.trial.raw,
+                "training": {
+                    **config.trial.raw["training"],
+                    "random_seed": 123,
+                    "optuna_trials": 25,
+                },
+            },
+        ),
+    )
+
+    assert changed_training.config_hash == config.config_hash
+    original_run_dir = config.run_dir()
+    assert changed_training.run_dir() == original_run_dir
+    saved_trial = json.loads(
+        (original_run_dir / "trial.json").read_text(encoding="utf-8")
+    )
+    assert saved_trial["training"]["random_seed"] == 123
+    assert saved_trial["training"]["optuna_trials"] == 25
 
 
 def test_minimum_samples_are_calculated_per_sensor(config_factory):
