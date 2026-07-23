@@ -22,6 +22,34 @@ ingestion, feature extraction, and training for every object in `trials.json`.
 It stops on the first failing stage and leaves MLflow running so its UI remains
 available.
 
+## Notifications
+
+Set `NTFY_TOPIC` in `.env` to enable ntfy notifications. `NTFY_EVENTS` controls
+which completed or failed pipeline events publish a notification:
+
+```dotenv
+# Notify once when run-trials.ps1 exits. A successful event means all trials ran.
+NTFY_EVENTS=all-trials
+
+# Notify after every training step (once per trial).
+NTFY_EVENTS=train
+
+# Notify after both ingestion tasks and feature extraction in every trial.
+NTFY_EVENTS=ingest,features
+```
+
+The default, `steps`, preserves the original behavior and selects every
+per-trial task: `ingest-train-dataset`, `ingest-collector`, `features`, and
+`train`. The `ingest` alias selects both ingestion tasks. `all` selects every
+task plus `all-trials`; `none` disables all events without clearing
+`NTFY_TOPIC`. Values are case-insensitive and may be separated by commas or
+spaces.
+
+The `all-trials` event is sent once as `run-trials.ps1` exits. It reports
+success after the script completes all configured trials, or failure if the
+script stops early. Notification delivery is best-effort and does not change a
+pipeline task's exit status.
+
 Each trial object is hashed independently using canonical JSON after removing
 its top-level `training` field. Neither that field (including all its
 subproperties) nor fields in `model.config.yaml` contribute to the hash, so

@@ -10,6 +10,7 @@ x-common: &common
     NTFY_SERVER: ${NTFY_SERVER:-https://ntfy.sh}
     NTFY_TOPIC: ${NTFY_TOPIC:-}
     NTFY_TOKEN: ${NTFY_TOKEN:-}
+    NTFY_EVENTS: ${NTFY_EVENTS:-steps}
   volumes:
     - ${ALL_TMD_DATA_DIR:-./data}:/data
 
@@ -28,6 +29,8 @@ services:
       - python
       - -m
       - all_tmd.compose_task
+      - --event
+      - ingest-train-dataset
       - ingest-train-dataset-${ALL_TMD_TRIAL_INDEX:-0}
       - python
       - -m
@@ -43,6 +46,8 @@ services:
       - python
       - -m
       - all_tmd.compose_task
+      - --event
+      - ingest-collector
       - ingest-collector-${ALL_TMD_TRIAL_INDEX:-0}
       - python
       - -m
@@ -58,6 +63,8 @@ services:
       - python
       - -m
       - all_tmd.compose_task
+      - --event
+      - features
       - features-${ALL_TMD_TRIAL_INDEX:-0}
       - python
       - -m
@@ -75,11 +82,14 @@ services:
       NTFY_SERVER: ${NTFY_SERVER:-https://ntfy.sh}
       NTFY_TOPIC: ${NTFY_TOPIC:-}
       NTFY_TOKEN: ${NTFY_TOKEN:-}
+      NTFY_EVENTS: ${NTFY_EVENTS:-steps}
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow:5002}
     command:
       - python
       - -m
       - all_tmd.compose_task
+      - --event
+      - train
       - train-${ALL_TMD_TRIAL_INDEX:-0}
       - python
       - -m
@@ -87,6 +97,14 @@ services:
       - --trial-index
       - ${ALL_TMD_TRIAL_INDEX:-0}
       - train
+
+  notify:
+    <<: *common
+    profiles: ["notifications"]
+    entrypoint:
+      - python
+      - -m
+      - all_tmd.notifications
 
   mlflow:
     image: ghcr.io/mlflow/mlflow:v3.14.0

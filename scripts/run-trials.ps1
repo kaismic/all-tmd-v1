@@ -15,6 +15,9 @@ if ($null -eq $trials -or $trials.Count -eq 0) {
 
 Push-Location $projectRoot
 $previousTrialIndex = $env:ALL_TMD_TRIAL_INDEX
+$runStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+$runExitCode = 1
+$runFailure = $null
 try {
     docker compose build
     if ($LASTEXITCODE -ne 0) {
@@ -42,8 +45,22 @@ try {
         docker compose --profile train run --rm train
         if ($LASTEXITCODE -ne 0) { throw "Training failed for trial index $index." }
     }
+    $runExitCode = 0
+}
+catch {
+    $runFailure = $_
 }
 finally {
+    $runStopwatch.Stop()
+    docker compose --profile notifications run --rm --no-deps notify `
+        run-trials `
+        --event all-trials `
+        --exit-code $runExitCode `
+        --duration-seconds $runStopwatch.Elapsed.TotalSeconds
+    if ($LASTEXITCODE -ne 0) {
+        Write-Warning "The run-level ntfy notification command failed with exit code $LASTEXITCODE."
+    }
+
     if ($null -eq $previousTrialIndex) {
         Remove-Item Env:ALL_TMD_TRIAL_INDEX -ErrorAction SilentlyContinue
     }
@@ -51,4 +68,8 @@ finally {
         $env:ALL_TMD_TRIAL_INDEX = $previousTrialIndex
     }
     Pop-Location
+}
+
+if ($null -ne $runFailure) {
+    throw $runFailure
 }
