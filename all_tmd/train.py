@@ -48,10 +48,13 @@ def train(config: PipelineConfig) -> dict[str, Any]:
     source_indices = manifest["source_indices"]
     cv_folds = manifest["collector_cv_folds"]
     total_trials = config.trial.training.optuna_trials
+    configured_labels = sorted(config.trial.labels.values())
 
     def objective(trial: optuna.Trial) -> float:
         params = suggest_model_params(trial, config.trial.training.model_families)
         fold_scores: list[float] = []
+        out_of_fold_truth: list[np.ndarray] = []
+        out_of_fold_predictions: list[np.ndarray] = []
         for fold_number, fold in enumerate(cv_folds):
             train_indices = np.array(
                 source_indices + fold["train_indices"],
@@ -72,14 +75,29 @@ def train(config: PipelineConfig) -> dict[str, Any]:
                 weights,
             )
             predictions = model.predict(x[valid_indices])
+            out_of_fold_truth.append(y[valid_indices])
+            out_of_fold_predictions.append(predictions)
             score = float(
-                f1_score(y[valid_indices], predictions, average="macro")
+                f1_score(
+                    y[valid_indices],
+                    predictions,
+                    average="macro",
+                    zero_division=0,
+                )
             )
             fold_scores.append(score)
             trial.report(float(np.mean(fold_scores)), step=fold_number)
             if trial.should_prune():
                 raise optuna.TrialPruned()
-        return float(np.mean(fold_scores))
+        return float(
+            f1_score(
+                np.concatenate(out_of_fold_truth),
+                np.concatenate(out_of_fold_predictions),
+                labels=configured_labels,
+                average="macro",
+                zero_division=0,
+            )
+        )
 
     study = optuna.create_study(
         direction="maximize",
@@ -134,6 +152,12 @@ def train(config: PipelineConfig) -> dict[str, Any]:
             "train_dataset": source_name,
             "feature_names": feature_names,
             "best_cross_validation_macro_f1": float(study.best_value),
+            "cross_validation": {
+                "method": "grouped_out_of_fold",
+                "folds": int(len(cv_folds)),
+                "rows": int(len(manifest["collector_calibration_indices"])),
+                "macro_f1": float(study.best_value),
+            },
             "best_params": best_params,
             "collector_calibration": _evaluate(
                 final_model,

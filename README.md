@@ -88,6 +88,11 @@ non-validation collector calibration groups. The final model trains on all
 source rows plus all collector calibration rows; only collector holdout groups
 are used for final reported evaluation.
 
+When a class has only two collector groups, one group remains in calibration
+and one remains in holdout. Grouped cross-validation still evaluates every
+calibration group exactly once, and Optuna is scored from the combined
+out-of-fold predictions rather than requiring every class in every fold.
+
 MLflow is available at `http://localhost:5002` after:
 
 ```powershell

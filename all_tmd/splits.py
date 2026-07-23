@@ -7,7 +7,7 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import StratifiedGroupKFold, StratifiedShuffleSplit
+from sklearn.model_selection import GroupKFold, StratifiedShuffleSplit
 
 from all_tmd.config import PipelineConfig
 
@@ -63,16 +63,14 @@ def create_splits(frame: pd.DataFrame, config: PipelineConfig) -> dict[str, Any]
     ].astype(int).tolist()
 
     calibration = frame.loc[calibration_indices]
-    calibration_counts = (
-        calibration.drop_duplicates("group_id")["label"].value_counts()
-    )
-    folds = min(5, int(calibration_counts.min()))
+    calibration_group_count = int(calibration["group_id"].nunique())
+    folds = min(5, calibration_group_count)
     if folds < 2:
         raise ValueError(
-            "Collector calibration set requires at least two groups per class "
-            "for grouped cross-validation"
+            "Collector calibration set requires at least two groups for "
+            "grouped cross-validation"
         )
-    cv = StratifiedGroupKFold(
+    cv = GroupKFold(
         n_splits=folds,
         shuffle=True,
         random_state=config.trial.training.random_seed,
@@ -81,8 +79,7 @@ def create_splits(frame: pd.DataFrame, config: PipelineConfig) -> dict[str, Any]
     calibration_array = np.array(calibration_indices, dtype=np.int64)
     for train_positions, valid_positions in cv.split(
         calibration,
-        calibration["label"].to_numpy(dtype=np.int64),
-        calibration["group_id"].astype(str).to_numpy(),
+        groups=calibration["group_id"].astype(str).to_numpy(),
     ):
         cv_folds.append(
             {
@@ -92,7 +89,7 @@ def create_splits(frame: pd.DataFrame, config: PipelineConfig) -> dict[str, Any]
         )
 
     return {
-        "manifest_version": 1,
+        "manifest_version": 2,
         "frame_fingerprint": frame_fingerprint(frame),
         "source_indices": source_indices,
         "collector_calibration_indices": calibration_indices,
