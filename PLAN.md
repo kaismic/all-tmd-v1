@@ -26,6 +26,8 @@ I will dynamically edit the content of `trials.json` to manually tweak configura
 ### Configuration Hash
 Currently, in `us-tmd-v2` the configuration hash is created by appending all the fields in `model.config.yaml`. However, in `all-tmd-v1`, the configuration hash should be created for each objects in `trials.json` separately.
 
+However, the `training` field and its subproperties in the trial objects should be excluded from configuration hash input. This is because they do not influence ingestion and feature extraction output.
+
 ### Raw Data Ingestion
 This project must be able to ingest both US-TMD and NOR-TMD dataset, and produce outputs in a common format.
 For example,
