@@ -1,0 +1,110 @@
+{
+  "default": {
+    "train_dataset": "us-tmd",
+    "labels": {
+      "bus": 0,
+      "car": 1,
+      "train": 2
+    },
+    "features": {
+      "default_window_seconds": 10,
+      "default_step_seconds": 5,
+      "sensors": {
+        "accelerometer": [
+          "mean",
+          "standard_deviation",
+          "range",
+          "minimum"
+        ],
+        "gyroscope": [
+          "mean",
+          "standard_deviation",
+          "range",
+          "minimum"
+        ],
+        "magnetometer": [
+          "standard_deviation",
+          "range"
+        ],
+        "pressure": [
+          "standard_deviation",
+          "range",
+          "delta_from_window_start"
+        ]
+      }
+    },
+    "training": {
+      "random_seed": 42,
+      "optuna_trials": 45,
+      "model_families": [
+        "random_forest",
+        "xgboost",
+        "mlp"
+      ],
+      "calibration_fraction": 0.5
+    }
+  },
+  "dimensions": [
+    {
+      "name": "sensor-set",
+      "options": [
+        {
+          "pick": {
+            "features.sensors": [
+              "accelerometer",
+              "gyroscope"
+            ]
+          }
+        },
+        {
+          "pick": {
+            "features.sensors": [
+              "accelerometer",
+              "gyroscope",
+              "magnetometer"
+            ]
+          }
+        },
+        {
+          "pick": {
+            "features.sensors": [
+              "accelerometer",
+              "gyroscope",
+              "magnetometer",
+              "pressure"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "window-and-step",
+      "options": [
+        {
+          "set": {
+            "features.default_window_seconds": 10,
+            "features.default_step_seconds": 5
+          }
+        },
+        {
+          "set": {
+            "features.default_window_seconds": 20,
+            "features.default_step_seconds": 10
+          }
+        },
+        {
+          "set": {
+            "features.default_window_seconds": 30,
+            "features.default_step_seconds": 15
+          }
+        },
+        {
+          "set": {
+            "features.default_window_seconds": 60,
+            "features.default_step_seconds": 30
+          }
+        }
+      ]
+    }
+  ]
+}

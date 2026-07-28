@@ -8,11 +8,13 @@ one `TrainingDatasetAdapter` implementation.
 
 ## Configure and run
 
-Copy the examples and set the host data directory:
+Copy the examples, generate the Cartesian product of trials, and set the host
+data directory:
 
 ```powershell
-Copy-Item trials.json.example trials.json
+Copy-Item trial-parameters.json.example trial-parameters.json
 Copy-Item .env.example .env
+python .\scripts\generate-trials.py
 .\scripts\run-trials.ps1
 ```
 
@@ -20,8 +22,9 @@ On Linux or macOS, use the Bash runner instead. It requires either `python3` or
 `jq` to read `trials.json`:
 
 ```bash
-cp trials.json.example trials.json
+cp trial-parameters.json.example trial-parameters.json
 cp .env.example .env
+python3 ./scripts/generate-trials.py
 bash ./scripts/run-trials.sh
 ```
 
@@ -30,6 +33,49 @@ it to become healthy, then run training-dataset ingestion, collector ingestion,
 feature extraction, and training for every object in `trials.json`. They stop
 on the first failing stage and leave MLflow running so its UI remains
 available.
+
+### Generate trial configurations
+
+`trial-parameters.json` contains a complete `default` trial and zero or more
+named `dimensions`. The generator chooses one option from each dimension and
+writes their Cartesian product to `trials.json`. Options in the first
+dimension vary slowest, so the example produces the four window choices for
+the first sensor set before moving to the next sensor set.
+
+Each option supports these operations:
+
+- `set` maps dotted trial paths to replacement JSON values. Put related paths
+  in the same option to keep them paired, as the example does for
+  `features.default_window_seconds` and `features.default_step_seconds`.
+- `pick` maps a dotted path for a JSON object to the list of keys to retain.
+  The example uses it to select sensor subsets while defining each sensor's
+  aggregation list only once in `default`.
+
+Every option in one dimension must modify the same paths, and separate
+dimensions cannot modify overlapping paths. All paths and `pick` keys must
+already exist in `default`; these checks catch misspellings before
+`trials.json` is replaced. An empty `dimensions` array generates one copy of
+the default trial.
+
+For example, another independent dimension can vary datasets:
+
+```json
+{
+  "name": "training-dataset",
+  "options": [
+    { "set": { "train_dataset": "us-tmd" } },
+    { "set": { "train_dataset": "nor-tmd" } }
+  ]
+}
+```
+
+Use alternate paths when needed:
+
+```powershell
+python .\scripts\generate-trials.py `
+  --parameters custom-parameters.json `
+  --output custom-trials.json
+```
 
 ## Notifications
 
