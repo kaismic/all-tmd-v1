@@ -193,13 +193,26 @@ The server stores metadata in `/data/all-tmd-work/mlflow.db` and proxies
 artifacts into `/data/all-tmd-work/mlartifacts`, both beneath the configured
 `ALL_TMD_DATA_DIR` host directory.
 
-New runs appear in the `ALL-TMD Transfer v2` experiment. The original
-`ALL-TMD Transfer` experiment remains available as historical metadata, but its
-runs predate persistent artifact storage. Each new run records `metrics.json`,
-the fitted model, Optuna trials, and the split manifest in the **Artifacts**
-tab. The `evaluation` artifact directory also contains raw-count and
-row-normalized collector-holdout confusion-matrix images. Matrix rows are
-actual labels and columns are predicted labels.
+New runs appear in the stable `ALL-TMD` experiment. Collector downloads do not
+rename or version the experiment. Instead, every run records the
+`collector_session_digest` parameter, a SHA-256 fingerprint of its sorted
+unique collector session IDs, plus `collector_session_count`. These fields make
+runs that use the same collector snapshot directly searchable and comparable
+without storing local download state in `model.config.yaml`.
+
+The **Datasets** section of each run records three native MLflow inputs: source
+training features, collector calibration features, and collector holdout
+features. Each input has a deterministic content digest covering its labels,
+group and session IDs, window boundaries, and configured feature values. The
+digest is independent of row order but changes when any tracked content
+changes. Dataset contexts are `training`, `calibration`, and `evaluation`,
+respectively.
+
+Each new run also records `metrics.json`, the fitted model, Optuna trials, and
+the split manifest in the **Artifacts** tab. The `evaluation` artifact
+directory contains raw-count and row-normalized collector-holdout
+confusion-matrix images. Matrix rows are actual labels and columns are
+predicted labels.
 
 ## Direct commands
 

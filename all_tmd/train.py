@@ -114,7 +114,7 @@ def train(config: PipelineConfig) -> dict[str, Any]:
     progress(
         f"Optuna optimization starting: dataset={source_name}, trials={total_trials}"
     )
-    with start_run(config):
+    with start_run(config, frame, manifest):
         study.optimize(
             objective,
             n_trials=total_trials,

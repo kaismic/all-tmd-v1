@@ -13,7 +13,7 @@ def test_training_writes_required_reports(config_factory, monkeypatch):
     logged_confusion_matrices = []
     monkeypatch.setattr(
         "all_tmd.train.start_run",
-        lambda _config: nullcontext(),
+        lambda *_args: nullcontext(),
     )
     monkeypatch.setattr(
         "all_tmd.train.log_metrics",
