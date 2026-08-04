@@ -1,0 +1,75 @@
+param(
+    [Parameter(Mandatory = $true)]
+    [string]$BudgetEmail,
+    [string]$StackName = "all-tmd-v1-worker",
+    [string]$Region = "ap-southeast-2",
+    [string]$Profile = "",
+    [string]$InstanceType = "c7i.4xlarge",
+    [int]$DataVolumeSizeGiB = 200,
+    [string]$BucketName = "",
+    [string]$NtfyTokenParameterName = "/all-tmd-v1/ntfy-token",
+    [switch]$LeaveRunning
+)
+
+$ErrorActionPreference = "Stop"
+$projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+. (Join-Path $PSScriptRoot "common.ps1")
+Initialize-AwsContext -Region $Region -Profile $Profile
+
+$template = Join-Path $projectRoot "aws\cloudformation.yaml"
+$parameterOverrides = @(
+    "InstanceType=$InstanceType",
+    "DataVolumeSizeGiB=$DataVolumeSizeGiB",
+    "BudgetNotificationEmail=$BudgetEmail",
+    "NtfyTokenParameterName=$NtfyTokenParameterName"
+)
+if ($BucketName) {
+    $parameterOverrides += "BucketName=$BucketName"
+}
+
+$deployArguments = @(
+    "cloudformation", "deploy",
+    "--stack-name", $StackName,
+    "--template-file", $template,
+    "--capabilities", "CAPABILITY_IAM",
+    "--parameter-overrides"
+) + $parameterOverrides
+Invoke-AllTmdAws -Arguments $deployArguments -AllowEmpty
+
+$outputs = Get-AllTmdStackOutputs -StackName $StackName
+$instanceId = $outputs.InstanceId
+Invoke-AllTmdAws -Arguments @(
+    "ec2", "wait", "instance-status-ok", "--instance-ids", $instanceId
+) -AllowEmpty
+Wait-AllTmdSsmOnline -InstanceId $instanceId
+
+$ready = $false
+for ($attempt = 0; $attempt -lt 60 -and -not $ready; $attempt++) {
+    try {
+        $commandId = Send-AllTmdSsmCommand -InstanceId $instanceId -Commands @(
+            "test -f /var/lib/all-tmd-v1/bootstrap-complete",
+            "docker compose version",
+            "mountpoint -q /mnt/all-tmd-data"
+        ) -Comment "Validate All-TMD worker bootstrap"
+        Wait-AllTmdSsmCommand -CommandId $commandId -InstanceId $instanceId |
+            Out-Null
+        $ready = $true
+    }
+    catch {
+        if ($attempt -eq 59) { throw }
+        Start-Sleep -Seconds 10
+    }
+}
+
+if (-not $LeaveRunning) {
+    Invoke-AllTmdAws -Arguments @(
+        "ec2", "stop-instances", "--instance-ids", $instanceId,
+        "--output", "json"
+    ) | Out-Null
+    Write-Host "Worker $instanceId is initialized and stopping to avoid idle compute charges."
+}
+else {
+    Write-Host "Worker $instanceId is initialized and remains running."
+}
+Write-Host "S3 bucket: $($outputs.BucketName)"
+Write-Host "Data volume: $($outputs.DataVolumeId)"

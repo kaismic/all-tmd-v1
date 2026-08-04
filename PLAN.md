@@ -122,3 +122,25 @@ and rebuilds cached features while preserving normalized event data.
 ### Notes
 For any other undefined implementation details, adapt the implementation from `us-tmd-v2`.
 For example, `.gitignore`, `.dockerignore`, `.env`, `pyproject.toml`, `requirements.txt`, `docker-compose.yml`, `Dockerfile`, etc. file contents and configurations.
+
+## AWS EC2 execution
+
+Occasional full sweeps are supported by a dedicated CloudFormation stack in
+Sydney. The stack provisions an On-Demand `c7i.4xlarge`, an encrypted 200 GiB
+`gp3` data volume, an encrypted/versioned private S3 bucket, a no-ingress
+security group, least-privilege worker role, Systems Manager access, detailed
+EC2 monitoring, and a USD 50 monthly EC2 budget notification. S3 is retained
+and the EBS volume is snapshotted when the stack is archived.
+
+Each cloud run uses an immutable, non-secret S3 bundle containing the exact Git
+commit, generated trials, model configuration, parameter source, checksums, and
+notification parameter name. A smoke bundle reduces the first generated trial
+to one Optuna evaluation; a full bundle preserves all generated trials. The
+current parameter document produces eight full trials.
+
+The worker downloads inputs to persistent EBS and runs the existing Bash and
+Docker Compose entry points under a one-shot systemd service. It retrieves the
+ntfy token from SSM Parameter Store, keeps MLflow private behind an SSM port
+forward, uploads run-specific reports/models/splits plus MLflow and diagnostic
+state, and stops the EC2 instance after success or failure. There is no public
+application API, model schema, or trial schema change for cloud execution.

@@ -34,6 +34,115 @@ feature extraction, and training for every object in `trials.json`. They stop
 on the first failing stage and leave MLflow running so its UI remains
 available.
 
+## Run trials on AWS EC2
+
+The AWS runner is intended for occasional, long CPU sweeps that should continue
+without keeping the local computer available. It deploys one On-Demand
+`c7i.4xlarge` worker in `ap-southeast-2`, an encrypted 200 GiB `gp3` data
+volume, and a private encrypted S3 bucket. The worker has no inbound security
+group rules; administration and MLflow port forwarding use Systems Manager.
+
+The EC2 data volume is mounted at `/mnt/all-tmd-data` on the host and at `/data`
+inside the existing Compose services. Input files are copied from S3 on the
+first run, while active events, features, MLflow state, and checkpoints remain
+on EBS for reuse. Every run uploads its reports, models, splits, configuration,
+logs, resource-usage report, and MLflow state to S3 before stopping the worker.
+The worker also stops after pipeline failure, once diagnostics are uploaded.
+
+### Prerequisites and deployment
+
+Install the AWS CLI and Session Manager plugin, authenticate an AWS profile,
+and commit and push the exact All-TMD code that will run. The remote worker
+checks out the full Git SHA recorded in each run bundle. The default preparation
+command refuses a dirty worktree to prevent a local-only code revision from
+being mistaken for the remote revision.
+
+Deploy the stack with the email address that should receive the USD 50 monthly
+EC2 budget alert:
+
+```powershell
+aws login
+.\scripts\aws\deploy.ps1 -BudgetEmail you@example.com
+```
+
+The deployment validates Docker, Compose, the EBS mount, and Systems Manager,
+then stops the initialized worker unless `-LeaveRunning` is supplied. The stack
+uses a generated bucket name by default; pass `-BucketName` when a specific
+globally unique name is required. `-Profile` and `-Region` are accepted by all
+AWS scripts.
+
+If the ntfy topic requires an access token, store it as an SSM SecureString.
+The token is never included in S3 run bundles or uploaded from the local `.env`:
+
+```powershell
+.\scripts\aws\set-ntfy-token.ps1
+```
+
+Upload the immutable inputs once. `aws s3 sync` performs multipart transfer for
+the large NOR-TMD source and does not delete remote objects:
+
+```powershell
+.\scripts\aws\upload-inputs.ps1 -DataDir D:\tmd-data
+```
+
+### Smoke and full runs
+
+Prepare a smoke bundle first. It contains only the first generated trial and
+sets `training.optuna_trials` to `1`; the canonical parameter file is not
+modified:
+
+```powershell
+.\scripts\aws\prepare-run.ps1 -Mode Smoke -NtfyTopic your-topic
+.\scripts\aws\start-run.ps1 -RunId <printed-smoke-run-id>
+.\scripts\aws\status.ps1 -RunId <printed-smoke-run-id>
+```
+
+After the smoke run succeeds, prepare the full bundle. The current
+`trial-parameters.json` generates eight outer trials: two sensor sets crossed
+with the 10/5, 20/10, 30/15, and 60/30 second window/step pairs. Each trial runs
+45 Optuna evaluations.
+
+```powershell
+.\scripts\aws\prepare-run.ps1 -Mode Full -NtfyTopic your-topic
+.\scripts\aws\start-run.ps1 -RunId <printed-full-run-id>
+```
+
+`start-run.ps1` returns after installing and starting a one-shot systemd
+service. The service continues when the Session Manager connection or local
+computer closes. Obtain a status and recent journald lines at any time with
+`status.ps1`. While the worker and MLflow container are running, open a private
+port-forwarding session and browse to `http://localhost:5002`:
+
+```powershell
+.\scripts\aws\port-forward-mlflow.ps1
+```
+
+Download a completed run from its isolated S3 results prefix:
+
+```powershell
+.\scripts\aws\download-results.ps1 `
+  -RunId <run-id> `
+  -Destination .\aws-results\<run-id>
+```
+
+The uploaded `run/run-summary.json` records the exit code, duration, vCPU and
+memory allocation. `run/resource-usage.txt` records GNU `time -v` measurements,
+including peak resident memory and CPU utilization. EC2 detailed monitoring
+and EBS CloudWatch metrics provide instance CPU and volume throughput history.
+
+Use `stop-worker.ps1` if a debugging run was prepared with `-NoAutoStop`. A
+stopped worker incurs no EC2 compute charge, but EBS storage remains billable.
+If another sweep is not expected within 30 days, archive the stack explicitly:
+
+```powershell
+.\scripts\aws\archive-stack.ps1 -ConfirmArchive
+```
+
+Archiving deletes the worker and its dedicated network, creates a final EBS
+snapshot through CloudFormation, and retains the S3 bucket. Snapshots and S3
+objects remain billable until deliberately deleted. The CloudFormation outputs
+identify every persistent resource.
+
 ### Generate trial configurations
 
 `trial-parameters.json` contains a complete `default` trial and zero or more
