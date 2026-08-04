@@ -85,7 +85,13 @@ def test_start_run_logs_dataset_inputs_and_collector_summary(
     config_factory,
     monkeypatch,
 ):
-    config = config_factory(mlflow_enabled=True)
+    config = config_factory(
+        mlflow_enabled=True,
+        sensors={
+            "accelerometer": ["mean", "standard deviation"],
+            "pressure": ["range"],
+        },
+    )
     frame = _dataset_frame()
     manifest = {
         "source_indices": [0, 1],
@@ -120,6 +126,15 @@ def test_start_run_logs_dataset_inputs_and_collector_summary(
         assert run == "active-run"
 
     assert recorded["experiment"] == "test"
+    assert recorded["params"]["sensors"] == "accelerometer,pressure"
+    assert recorded["params"]["features.accelerometer"] == (
+        "mean,standard_deviation"
+    )
+    assert recorded["params"]["features.pressure"] == "range"
+    assert "features.gyroscope" not in recorded["params"]
+    assert recorded["params"]["feature_names"] == (
+        "accelerometer#mean,accelerometer#standard_deviation,pressure#range"
+    )
     assert recorded["params"]["collector_session_count"] == 2
     assert len(recorded["params"]["collector_session_digest"]) == 64
     assert [context for _, context in recorded["inputs"]] == [
@@ -173,6 +188,8 @@ def _row(
         "window_start_ms": window_start_ms,
         "window_end_ms": window_start_ms + 1000,
         "accelerometer#mean": value,
+        "accelerometer#standard_deviation": value / 10,
+        "pressure#range": value * 10,
     }
 
 

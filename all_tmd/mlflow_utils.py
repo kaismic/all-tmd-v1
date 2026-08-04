@@ -36,6 +36,14 @@ def start_run(
         mlflow.set_tracking_uri(config.mlflow.tracking_uri)
     mlflow.set_experiment(config.mlflow.experiment_name)
     collector_digest, collector_count = collector_session_summary(frame)
+    feature_params = {
+        "sensors": ",".join(config.trial.features.sensors),
+        "feature_names": ",".join(config.trial.feature_names),
+        **{
+            f"features.{sensor}": ",".join(aggregations)
+            for sensor, aggregations in config.trial.features.sensors.items()
+        },
+    }
     with mlflow.start_run(
         run_name=f"{config.trial.train_dataset}-{config.config_hash[:8]}"
     ) as run:
@@ -46,7 +54,7 @@ def start_run(
                 "train_dataset": config.trial.train_dataset,
                 "window_seconds": config.trial.features.default_window_seconds,
                 "step_seconds": config.trial.features.default_step_seconds,
-                "sensors": ",".join(config.trial.features.sensors),
+                **feature_params,
                 "model_families": ",".join(config.trial.training.model_families),
                 "optuna_trials": config.trial.training.optuna_trials,
                 "collector_session_digest": collector_digest,

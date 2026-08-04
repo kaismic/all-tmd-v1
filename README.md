@@ -200,6 +200,13 @@ unique collector session IDs, plus `collector_session_count`. These fields make
 runs that use the same collector snapshot directly searchable and comparable
 without storing local download state in `model.config.yaml`.
 
+Run parameters also expose the complete configured feature set. The existing
+`sensors` parameter provides the sensor names, `feature_names` provides every
+fully qualified feature such as `accelerometer#standard_deviation`, and each
+configured sensor has its own comma-separated parameter such as
+`features.accelerometer=mean,standard_deviation,range`. Sensors omitted from a
+trial do not create `features.<sensor>` parameters.
+
 The **Datasets** section of each run records three native MLflow inputs: source
 training features, collector calibration features, and collector holdout
 features. Each input has a deterministic content digest covering its labels,
