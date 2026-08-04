@@ -39,23 +39,32 @@ available.
 `trial-parameters.json` contains a complete `default` trial and zero or more
 named `dimensions`. The generator chooses one option from each dimension and
 writes their Cartesian product to `trials.json`. Options in the first
-dimension vary slowest, so the example produces the four window choices for
-the first sensor set before moving to the next sensor set.
+dimension vary slowest. The example independently varies the sensor set, the
+accelerometer feature set, and the paired window/step values.
 
 Each option supports these operations:
 
 - `set` maps dotted trial paths to replacement JSON values. Put related paths
   in the same option to keep them paired, as the example does for
   `features.default_window_seconds` and `features.default_step_seconds`.
-- `pick` maps a dotted path for a JSON object to the list of keys to retain.
-  The example uses it to select sensor subsets while defining each sensor's
-  aggregation list only once in `default`.
+- `pick` maps a dotted path for either a JSON object or a string array to the
+  keys or values to retain, in the requested order. The example uses it to
+  select sensor subsets and accelerometer feature subsets while defining the
+  available values only once in `default`. Array values must match the
+  corresponding values in `default` exactly.
 
-Every option in one dimension must modify the same paths, and separate
-dimensions cannot modify overlapping paths. All paths and `pick` keys must
+Every option in one dimension must modify the same paths. Separate dimensions
+cannot modify overlapping paths except when nested paths both use `pick`, such
+as `features.sensors` and `features.sensors.accelerometer`. Nested picks are
+applied from the deepest path outward, so a feature set can be selected before
+its sensor is retained or removed. All paths and selected keys or values must
 already exist in `default`; these checks catch misspellings before
-`trials.json` is replaced. An empty `dimensions` array generates one copy of
-the default trial.
+`trials.json` is replaced.
+
+The generator removes identical resulting trials while preserving their
+first-seen order. This prevents the feature choices for a sensor excluded by a
+sensor-set option from producing redundant training runs. An empty
+`dimensions` array generates one copy of the default trial.
 
 For example, another independent dimension can vary datasets:
 

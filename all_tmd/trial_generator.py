@@ -35,7 +35,7 @@ def generate_trials(document: Any) -> list[dict[str, Any]]:
 
     parsed_dimensions: list[list[dict[str, dict[str, Any]]]] = []
     dimension_names: set[str] = set()
-    paths_by_dimension: list[tuple[str, set[str]]] = []
+    operations_by_dimension: list[tuple[str, set[tuple[str, str]]]] = []
 
     for dimension_index, dimension in enumerate(dimensions):
         location = f"dimensions[{dimension_index}]"
@@ -81,24 +81,35 @@ def generate_trials(document: Any) -> list[dict[str, Any]]:
             parsed_options.append(parsed_option)
 
         assert expected_operations is not None
-        dimension_paths = {path for _, path in expected_operations}
-        for previous_name, previous_paths in paths_by_dimension:
-            overlap = _find_overlapping_paths(dimension_paths, previous_paths)
-            if overlap is not None:
-                current_path, previous_path = overlap
+        for previous_name, previous_operations in operations_by_dimension:
+            conflict = _find_conflicting_operations(
+                expected_operations,
+                previous_operations,
+            )
+            if conflict is not None:
+                current_path, previous_path = conflict
                 raise TrialParametersError(
                     f"Dimensions '{previous_name}' and '{name}' both modify "
                     f"overlapping paths '{previous_path}' and '{current_path}'"
                 )
-        paths_by_dimension.append((name, dimension_paths))
+        operations_by_dimension.append((name, expected_operations))
         parsed_dimensions.append(parsed_options)
 
     combinations = product(*parsed_dimensions) if parsed_dimensions else [()]
     trials: list[dict[str, Any]] = []
+    trial_signatures: set[str] = set()
     for combination in combinations:
         trial = deepcopy(default)
-        for option in combination:
-            _apply_option(trial, option)
+        _apply_options(trial, combination)
+        signature = json.dumps(
+            trial,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        )
+        if signature in trial_signatures:
+            continue
+        trial_signatures.add(signature)
         trials.append(trial)
     return trials
 
@@ -206,12 +217,16 @@ def _validate_option(
         raise TrialParametersError(
             f"{location} cannot apply multiple operations to the same path"
         )
-    option_paths = set(all_paths)
-    overlap = _find_overlapping_paths(option_paths, option_paths)
-    if overlap is not None:
+    operations = {
+        (operation, path)
+        for operation, assignments in parsed.items()
+        for path in assignments
+    }
+    conflict = _find_conflicting_operations(operations, operations)
+    if conflict is not None:
         raise TrialParametersError(
-            f"{location} modifies overlapping paths '{overlap[0]}' and "
-            f"'{overlap[1]}'"
+            f"{location} modifies overlapping paths '{conflict[0]}' and "
+            f"'{conflict[1]}'"
         )
     return parsed
 
@@ -239,45 +254,73 @@ def _get_path(root: dict[str, Any], path: str, location: str) -> Any:
 
 
 def _validate_pick(
-    keys: Any,
+    selections: Any,
     current_value: Any,
     path: str,
     location: str,
 ) -> list[str]:
-    if not isinstance(current_value, dict):
+    if not isinstance(current_value, (dict, list)):
         raise TrialParametersError(
-            f"{location} can only pick keys from an object; '{path}' is not one"
+            f"{location} can only pick keys from an object or values from a "
+            f"string array; '{path}' is neither"
         )
     if (
-        not isinstance(keys, list)
-        or not keys
-        or any(not isinstance(key, str) or not key for key in keys)
+        not isinstance(selections, list)
+        or not selections
+        or any(
+            not isinstance(selection, str) or not selection
+            for selection in selections
+        )
     ):
         raise TrialParametersError(
             f"{location}.pick['{path}'] must be a non-empty array of strings"
         )
-    if len(keys) != len(set(keys)):
+    if len(selections) != len(set(selections)):
         raise TrialParametersError(
-            f"{location}.pick['{path}'] contains duplicate keys"
+            f"{location}.pick['{path}'] contains duplicate selections"
         )
-    missing = [key for key in keys if key not in current_value]
-    if missing:
+    if isinstance(current_value, list) and any(
+        not isinstance(value, str) or not value for value in current_value
+    ):
         raise TrialParametersError(
-            f"{location}.pick['{path}'] references unknown key(s): "
+            f"{location} can only pick values from a string array; "
+            f"'{path}' is not one"
+        )
+    missing = [
+        selection for selection in selections if selection not in current_value
+    ]
+    if missing:
+        item_type = "key(s)" if isinstance(current_value, dict) else "value(s)"
+        raise TrialParametersError(
+            f"{location}.pick['{path}'] references unknown {item_type}: "
             + ", ".join(missing)
         )
-    return keys
+    return selections
 
 
-def _apply_option(
+def _apply_options(
     trial: dict[str, Any],
-    option: dict[str, dict[str, Any]],
+    options: Sequence[dict[str, dict[str, Any]]],
 ) -> None:
-    for path, value in option.get("set", {}).items():
-        _set_path(trial, path, deepcopy(value))
-    for path, keys in option.get("pick", {}).items():
+    picks: list[tuple[str, list[str]]] = []
+    for option in options:
+        for path, value in option.get("set", {}).items():
+            _set_path(trial, path, deepcopy(value))
+        picks.extend(option.get("pick", {}).items())
+
+    for path, selections in sorted(
+        picks,
+        key=lambda item: len(item[0].split(".")),
+        reverse=True,
+    ):
         current_value = _get_path(trial, path, "Generated trial")
-        selected = {key: deepcopy(current_value[key]) for key in keys}
+        if isinstance(current_value, dict):
+            selected = {
+                selection: deepcopy(current_value[selection])
+                for selection in selections
+            }
+        else:
+            selected = [deepcopy(selection) for selection in selections]
         _set_path(trial, path, selected)
 
 
@@ -289,21 +332,31 @@ def _set_path(root: dict[str, Any], path: str, value: Any) -> None:
     parent[components[-1]] = value
 
 
-def _find_overlapping_paths(
-    left_paths: set[str],
-    right_paths: set[str],
+def _find_conflicting_operations(
+    left_operations: set[tuple[str, str]],
+    right_operations: set[tuple[str, str]],
 ) -> tuple[str, str] | None:
-    same_collection = left_paths is right_paths
-    for left in sorted(left_paths):
-        for right in sorted(right_paths):
-            if same_collection and left >= right:
+    same_collection = left_operations is right_operations
+    for left_index, (left_operation, left_path) in enumerate(
+        sorted(left_operations)
+    ):
+        for right_index, (right_operation, right_path) in enumerate(
+            sorted(right_operations)
+        ):
+            if same_collection and left_index >= right_index:
                 continue
             if (
-                left == right
-                or left.startswith(f"{right}.")
-                or right.startswith(f"{left}.")
+                left_path == right_path
+                or left_path.startswith(f"{right_path}.")
+                or right_path.startswith(f"{left_path}.")
             ):
-                return left, right
+                nested_picks = (
+                    left_path != right_path
+                    and left_operation == "pick"
+                    and right_operation == "pick"
+                )
+                if not nested_picks:
+                    return left_path, right_path
     return None
 
 

@@ -101,6 +101,121 @@ def test_empty_dimensions_generate_one_copy_of_default():
     assert trials[0] is not document["default"]
 
 
+def test_pick_selects_array_values_in_requested_order_without_mutating_default():
+    document = {
+        "default": {
+            "features": {
+                "sensors": {
+                    "accelerometer": [
+                        "mean",
+                        "standard_deviation",
+                        "delta_from_window_start",
+                    ]
+                }
+            }
+        },
+        "dimensions": [
+            {
+                "name": "accelerometer-features",
+                "options": [
+                    {
+                        "pick": {
+                            "features.sensors.accelerometer": [
+                                "delta_from_window_start",
+                                "mean",
+                            ]
+                        }
+                    }
+                ],
+            }
+        ],
+    }
+
+    trials = generate_trials(document)
+
+    assert trials[0]["features"]["sensors"]["accelerometer"] == [
+        "delta_from_window_start",
+        "mean",
+    ]
+    assert document["default"]["features"]["sensors"]["accelerometer"] == [
+        "mean",
+        "standard_deviation",
+        "delta_from_window_start",
+    ]
+
+
+def test_nested_sensor_and_feature_picks_deduplicate_excluded_sensor_variants():
+    document = {
+        "default": {
+            "features": {
+                "sensors": {
+                    "accelerometer": ["mean", "standard_deviation"],
+                    "pressure": ["mean", "standard_deviation"],
+                }
+            }
+        },
+        "dimensions": [
+            {
+                "name": "sensor-set",
+                "options": [
+                    {"pick": {"features.sensors": ["accelerometer"]}},
+                    {
+                        "pick": {
+                            "features.sensors": ["accelerometer", "pressure"]
+                        }
+                    },
+                ],
+            },
+            {
+                "name": "accelerometer-features",
+                "options": [
+                    {
+                        "pick": {
+                            "features.sensors.accelerometer": ["mean"]
+                        }
+                    },
+                    {
+                        "pick": {
+                            "features.sensors.accelerometer": [
+                                "standard_deviation"
+                            ]
+                        }
+                    },
+                ],
+            },
+            {
+                "name": "pressure-features",
+                "options": [
+                    {"pick": {"features.sensors.pressure": ["mean"]}},
+                    {
+                        "pick": {
+                            "features.sensors.pressure": ["standard_deviation"]
+                        }
+                    },
+                ],
+            },
+        ],
+    }
+
+    trials = generate_trials(document)
+
+    assert len(trials) == 6
+    assert [trial["features"]["sensors"] for trial in trials] == [
+        {"accelerometer": ["mean"]},
+        {"accelerometer": ["standard_deviation"]},
+        {"accelerometer": ["mean"], "pressure": ["mean"]},
+        {
+            "accelerometer": ["mean"],
+            "pressure": ["standard_deviation"],
+        },
+        {"accelerometer": ["standard_deviation"], "pressure": ["mean"]},
+        {
+            "accelerometer": ["standard_deviation"],
+            "pressure": ["standard_deviation"],
+        },
+    ]
+
+
 def test_write_trials_outputs_formatted_json(tmp_path):
     output = tmp_path / "nested" / "trials.json"
     trials = generate_trials(_document())
@@ -154,4 +269,81 @@ def test_rejects_invalid_or_ambiguous_dimensions(mutate, message):
     mutate(document)
 
     with pytest.raises(TrialParametersError, match=message):
+        generate_trials(document)
+
+
+@pytest.mark.parametrize(
+    ("selection", "message"),
+    [
+        ([], "non-empty array of strings"),
+        (["mean", "mean"], "duplicate selections"),
+        (["maximum"], "unknown value"),
+    ],
+)
+def test_rejects_invalid_array_pick_selections(selection, message):
+    document = {
+        "default": {
+            "features": {
+                "sensors": {
+                    "accelerometer": ["mean", "standard_deviation"],
+                }
+            }
+        },
+        "dimensions": [
+            {
+                "name": "accelerometer-features",
+                "options": [
+                    {
+                        "pick": {
+                            "features.sensors.accelerometer": selection,
+                        }
+                    }
+                ],
+            }
+        ],
+    }
+
+    with pytest.raises(TrialParametersError, match=message):
+        generate_trials(document)
+
+
+@pytest.mark.parametrize("child_operation", ["set", "pick"])
+def test_rejects_conflicting_nested_operations(child_operation):
+    document = {
+        "default": {
+            "features": {
+                "sensors": {
+                    "accelerometer": ["mean", "standard_deviation"],
+                }
+            }
+        },
+        "dimensions": [
+            {
+                "name": "sensor-set",
+                "options": [
+                    {"pick": {"features.sensors": ["accelerometer"]}},
+                ],
+            },
+            {
+                "name": "feature-conflict",
+                "options": [
+                    {
+                        child_operation: {
+                            (
+                                "features.sensors.accelerometer"
+                                if child_operation == "set"
+                                else "features.sensors"
+                            ): (
+                                ["mean"]
+                                if child_operation == "set"
+                                else ["accelerometer"]
+                            )
+                        }
+                    }
+                ],
+            },
+        ],
+    }
+
+    with pytest.raises(TrialParametersError, match="overlapping paths"):
         generate_trials(document)

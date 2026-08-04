@@ -78,6 +78,29 @@
       ]
     },
     {
+      "name": "accelerometer-features",
+      "options": [
+        {
+          "pick": {
+            "features.sensors.accelerometer": [
+              "mean",
+              "standard_deviation"
+            ]
+          }
+        },
+        {
+          "pick": {
+            "features.sensors.accelerometer": [
+              "mean",
+              "standard_deviation",
+              "range",
+              "minimum"
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "window-and-step",
       "options": [
         {
