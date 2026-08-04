@@ -135,6 +135,12 @@ are skipped on later runs. Collector event and feature directories contain a
 `checkpoint.json` array of processed session IDs. Newly downloaded collector
 sessions append new Parquet parts without rebuilding existing sessions.
 
+Feature directories also contain `feature-policy.json`, which records the
+global sampling, continuity, and trip-duration settings that affect their
+contents. Missing, legacy, corrupt, or changed policy metadata causes that
+source's feature directory to be rebuilt automatically; event data remains
+reusable.
+
 If a fixed training ingestion or feature build stops before writing `_SUCCESS`,
 the next run removes that incomplete directory and rebuilds it. Collector
 checkpoints are reconciled with existing Parquet parts after interruption.
@@ -167,6 +173,23 @@ default_window_seconds * minimum_sampling_rate[sensor]
 ```
 
 Windows missing the required count for any configured sensor are discarded.
+When `dataset.maximum_sample_interval_ms` is not `null`, each configured
+sensor must also cover the complete window without a gap greater than that
+value. The check includes the window-start-to-first-sample gap, consecutive
+sample gaps, and the last-sample-to-window-end gap. A discontinuous window is
+discarded without discarding other windows from the same session, and the same
+rule applies to training and collector data.
+
+Collector exports are emitted on accelerometer callbacks and carry the latest
+available values for the other sensors. Consequently, collector continuity is
+evaluated from the timestamps represented in the export and cannot detect how
+long a cached gyroscope, magnetometer, or pressure value has remained
+unchanged.
+
+The former `dataset.collector_max_sample_interval_ms` key is no longer
+accepted. Rename it to `dataset.maximum_sample_interval_ms`; set the new key
+to `null` to disable temporal continuity filtering.
+
 Feature columns use vector magnitude for accelerometer, gyroscope, and
 magnetometer, and the scalar pressure value for pressure.
 

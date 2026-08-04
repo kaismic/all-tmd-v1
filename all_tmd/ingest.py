@@ -200,12 +200,6 @@ def ingest_collector(config: PipelineConfig) -> Path:
         frame = frame[~frame["session_id"].astype(str).isin(processed)].copy()
         if frame.empty:
             continue
-        if _session_exceeds_sample_interval(
-            frame,
-            config.dataset.collector_max_sample_interval_ms,
-        ):
-            progress(f"Collector session skipped for sample interval gap: {path}")
-            continue
         frame = _duration_filter(frame, config)
         if frame.empty:
             continue
@@ -597,19 +591,6 @@ def _duration_filter(frame: pd.DataFrame, config: PipelineConfig) -> pd.DataFram
         ):
             keep.append(str(session_id))
     return frame[frame["session_id"].astype(str).isin(keep)].reset_index(drop=True)
-
-
-def _session_exceeds_sample_interval(
-    frame: pd.DataFrame,
-    threshold_ms: int | None,
-) -> bool:
-    if threshold_ms is None:
-        return False
-    for _, group in frame.groupby("session_id", sort=False):
-        timestamps = np.sort(group["timestamp_ms"].dropna().to_numpy(dtype=np.int64))
-        if timestamps.size > 1 and np.diff(timestamps).max(initial=0) > threshold_ms:
-            return True
-    return False
 
 
 def _coerce_event_frame(frame: pd.DataFrame) -> pd.DataFrame:

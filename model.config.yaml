@@ -21,7 +21,7 @@ dataset:
   work_dir: /data/all-tmd-work
   minimum_trip_seconds: 30
   maximum_trip_seconds: 28800
-  collector_max_sample_interval_ms: 500
+  maximum_sample_interval_ms: 500
 
 minimum_sampling_rate: # hz
   accelerometer: 30

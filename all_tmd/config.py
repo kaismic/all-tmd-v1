@@ -34,7 +34,7 @@ class DatasetConfig:
     work_dir: Path
     minimum_trip_seconds: int
     maximum_trip_seconds: int
-    collector_max_sample_interval_ms: int | None
+    maximum_sample_interval_ms: int | None
 
 
 @dataclass(frozen=True)
@@ -174,6 +174,15 @@ class PipelineConfig:
         dataset = data["dataset"]
         training = data["training"]
         mlflow = data["mlflow"]
+        if "collector_max_sample_interval_ms" in dataset:
+            raise ValueError(
+                "dataset.collector_max_sample_interval_ms was renamed to "
+                "dataset.maximum_sample_interval_ms"
+            )
+        maximum_sample_interval_ms = _optional_positive_int(
+            dataset.get("maximum_sample_interval_ms"),
+            "dataset.maximum_sample_interval_ms",
+        )
         return cls(
             schema_version=int(data["schema_version"]),
             sources=SourcesConfig(
@@ -184,11 +193,7 @@ class PipelineConfig:
                 work_dir=_path(dataset["work_dir"], "dataset.work_dir"),
                 minimum_trip_seconds=int(dataset["minimum_trip_seconds"]),
                 maximum_trip_seconds=int(dataset.get("maximum_trip_seconds", 28_800)),
-                collector_max_sample_interval_ms=(
-                    None
-                    if dataset.get("collector_max_sample_interval_ms") is None
-                    else int(dataset["collector_max_sample_interval_ms"])
-                ),
+                maximum_sample_interval_ms=maximum_sample_interval_ms,
             ),
             minimum_sampling_rate=rates,
             training=GlobalTrainingConfig(
@@ -318,3 +323,12 @@ def _path(value: Any, field: str) -> Path:
     if not text:
         raise ValueError(f"{field} cannot be empty")
     return Path(text)
+
+
+def _optional_positive_int(value: Any, field: str) -> int | None:
+    if value is None:
+        return None
+    parsed = int(value)
+    if parsed <= 0:
+        raise ValueError(f"{field} must be greater than zero or null")
+    return parsed

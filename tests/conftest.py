@@ -17,7 +17,8 @@ def config_factory(tmp_path):
         sensors: dict[str, list[str]] | None = None,
         minimum_sampling_rate: dict[str, float] | None = None,
         minimum_trip_seconds: int = 0,
-        collector_max_sample_interval_ms: int | None = None,
+        maximum_sample_interval_ms: int | None = None,
+        legacy_collector_max_sample_interval_ms: int | None = None,
         calibration_fraction: float = 0.5,
         mlflow_enabled: bool = False,
     ) -> PipelineConfig:
@@ -48,7 +49,7 @@ def config_factory(tmp_path):
                 "work_dir": str(data_root / "work"),
                 "minimum_trip_seconds": minimum_trip_seconds,
                 "maximum_trip_seconds": 28_800,
-                "collector_max_sample_interval_ms": collector_max_sample_interval_ms,
+                "maximum_sample_interval_ms": maximum_sample_interval_ms,
             },
             "minimum_sampling_rate": minimum_sampling_rate,
             "training": {
@@ -62,6 +63,10 @@ def config_factory(tmp_path):
                 "tracking_uri": None,
             },
         }
+        if legacy_collector_max_sample_interval_ms is not None:
+            config_data["dataset"]["collector_max_sample_interval_ms"] = (
+                legacy_collector_max_sample_interval_ms
+            )
         trial = {
             "train_dataset": train_dataset,
             "labels": {"bus": 0, "car": 1, "train": 2},

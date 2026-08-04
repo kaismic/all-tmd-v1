@@ -5,6 +5,8 @@ import json
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 
 def test_hash_is_canonical_json_of_trial_without_training(config_factory):
     config = config_factory()
@@ -76,6 +78,29 @@ def test_fractional_sample_requirement_rounds_up(config_factory):
     assert config.trial.minimum_samples(config.minimum_sampling_rate) == {
         "accelerometer": 2,
     }
+
+
+def test_maximum_sample_interval_must_be_positive_or_null(config_factory):
+    disabled = config_factory(maximum_sample_interval_ms=None)
+    enabled = config_factory(maximum_sample_interval_ms=500)
+    assert disabled.dataset.maximum_sample_interval_ms is None
+    assert enabled.dataset.maximum_sample_interval_ms == 500
+    with pytest.raises(
+        ValueError,
+        match="dataset.maximum_sample_interval_ms must be greater than zero or null",
+    ):
+        config_factory(maximum_sample_interval_ms=0)
+
+
+def test_legacy_collector_maximum_interval_key_is_rejected(config_factory):
+    with pytest.raises(
+        ValueError,
+        match=(
+            "dataset.collector_max_sample_interval_ms was renamed to "
+            "dataset.maximum_sample_interval_ms"
+        ),
+    ):
+        config_factory(legacy_collector_max_sample_interval_ms=500)
 
 
 def test_nor_source_accepts_a_file_path(config_factory, tmp_path):

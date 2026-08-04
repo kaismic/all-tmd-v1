@@ -106,6 +106,19 @@ Then the `minimum_samples_per_window` for accelerometer is:
 minimum_samples_per_window = 10 * 30 = 300
 ```
 
+### Per-window temporal continuity
+
+Feature windows must also remain temporally continuous when
+`dataset.maximum_sample_interval_ms` is configured. For every configured
+sensor, feature extraction checks the window boundaries and consecutive valid
+sample timestamps. Only the affected window is excluded when a gap exceeds
+the threshold; the remaining windows in that session stay eligible. This
+quality rule applies to both training and collector datasets.
+
+Each feature directory records these global quality settings in
+`feature-policy.json`. A missing or changed policy automatically invalidates
+and rebuilds cached features while preserving normalized event data.
+
 ### Notes
 For any other undefined implementation details, adapt the implementation from `us-tmd-v2`.
 For example, `.gitignore`, `.dockerignore`, `.env`, `pyproject.toml`, `requirements.txt`, `docker-compose.yml`, `Dockerfile`, etc. file contents and configurations.

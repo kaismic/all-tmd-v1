@@ -28,6 +28,8 @@ METADATA_COLUMNS = [
 ]
 FEATURE_BUCKETS = 64
 FEATURE_CHECKPOINT = "checkpoint.json"
+FEATURE_POLICY = "feature-policy.json"
+FEATURE_POLICY_SCHEMA_VERSION = 1
 
 
 def build_features(config: PipelineConfig) -> dict[str, Path]:
@@ -53,6 +55,13 @@ def _build_source_features(
             f"Training event dataset is incomplete (missing _SUCCESS): {event_dir}"
         )
     output_dir = run_dir / "features" / source_name
+    expected_policy = _feature_policy(config)
+    if output_dir.exists() and not _feature_policy_matches(
+        output_dir / FEATURE_POLICY,
+        expected_policy,
+    ):
+        progress(f"Rebuilding features for changed policy: {output_dir}")
+        shutil.rmtree(output_dir)
     success_path = output_dir / "_SUCCESS"
     checkpoint_path = output_dir / FEATURE_CHECKPOINT
     if not incremental and success_path.exists():
@@ -62,6 +71,7 @@ def _build_source_features(
         progress(f"Removing incomplete training feature dataset: {output_dir}")
         shutil.rmtree(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    _write_feature_policy(output_dir / FEATURE_POLICY, expected_policy)
 
     processed = _read_checkpoint(checkpoint_path) if incremental else set()
     if incremental:
@@ -166,7 +176,13 @@ def feature_frame(frame: pd.DataFrame, config: PipelineConfig) -> pd.DataFrame:
                 (session["timestamp_ms"] >= cursor)
                 & (session["timestamp_ms"] < cursor + window_ms)
             ]
-            if _has_required_samples(window, minimum_samples):
+            if _meets_window_quality_requirements(
+                window,
+                minimum_samples,
+                config.dataset.maximum_sample_interval_ms,
+                cursor,
+                cursor + window_ms,
+            ):
                 rows.append(
                     _window_features(
                         window,
@@ -224,18 +240,69 @@ def _window_features(
     return row
 
 
-def _has_required_samples(
+def _meets_window_quality_requirements(
     window: pd.DataFrame,
     minimum_samples: dict[str, int],
+    maximum_sample_interval_ms: int | None,
+    window_start_ms: int,
+    window_end_ms: int,
 ) -> bool:
     for sensor, required in minimum_samples.items():
         if sensor == "pressure":
-            valid = window["p"].notna().sum()
+            valid = window["p"].notna()
         else:
-            valid = window.loc[:, VECTOR_SENSOR_COLUMNS[sensor]].notna().all(axis=1).sum()
-        if int(valid) < required:
+            valid = window.loc[:, VECTOR_SENSOR_COLUMNS[sensor]].notna().all(axis=1)
+        timestamps = np.sort(
+            window.loc[valid, "timestamp_ms"].to_numpy(dtype=np.int64)
+        )
+        if timestamps.size < required:
             return False
+        if maximum_sample_interval_ms is not None:
+            bounded_timestamps = np.concatenate(
+                (
+                    np.array([window_start_ms], dtype=np.int64),
+                    timestamps,
+                    np.array([window_end_ms], dtype=np.int64),
+                )
+            )
+            if (
+                np.diff(bounded_timestamps).max(initial=0)
+                > maximum_sample_interval_ms
+            ):
+                return False
     return True
+
+
+def _feature_policy(config: PipelineConfig) -> dict[str, Any]:
+    configured_rates = {
+        sensor: config.minimum_sampling_rate[sensor]
+        for sensor in sorted(config.trial.features.sensors)
+    }
+    return {
+        "schema_version": FEATURE_POLICY_SCHEMA_VERSION,
+        "trial_config_hash": config.config_hash,
+        "minimum_sampling_rate": configured_rates,
+        "minimum_trip_seconds": config.dataset.minimum_trip_seconds,
+        "maximum_trip_seconds": config.dataset.maximum_trip_seconds,
+        "maximum_sample_interval_ms": config.dataset.maximum_sample_interval_ms,
+    }
+
+
+def _feature_policy_matches(path: Path, expected: dict[str, Any]) -> bool:
+    if not path.exists():
+        return False
+    try:
+        actual = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    return actual == expected
+
+
+def _write_feature_policy(path: Path, policy: dict[str, Any]) -> None:
+    path.write_text(
+        json.dumps(policy, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
 
 
 def _required_event_columns(config: PipelineConfig) -> list[str]:

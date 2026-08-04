@@ -69,7 +69,7 @@ def test_nor_adapter_accepts_one_csv_or_a_directory(config_factory, tmp_path):
 
 
 def test_collector_ingest_uses_checkpoint_and_appends(config_factory):
-    config = config_factory()
+    config = config_factory(maximum_sample_interval_ms=500)
     input_dir = config.sources.collector.input_path
     input_dir.mkdir(parents=True)
     _write_collector(input_dir / "one.json", "one")
@@ -85,6 +85,21 @@ def test_collector_ingest_uses_checkpoint_and_appends(config_factory):
     ingest_collector(config)
     assert len(list(output.glob("part-*.parquet"))) == 2
     assert json.loads((output / "checkpoint.json").read_text()) == ["one", "two"]
+
+
+def test_collector_ingest_keeps_session_with_sample_gap(config_factory):
+    config = config_factory(maximum_sample_interval_ms=500)
+    input_dir = config.sources.collector.input_path
+    input_dir.mkdir(parents=True)
+    _write_collector(input_dir / "gapped.json", "gapped")
+
+    output = ingest_collector(config)
+
+    events = pd.concat(
+        (pd.read_parquet(path) for path in output.glob("part-*.parquet")),
+        ignore_index=True,
+    )
+    assert events["session_id"].unique().tolist() == ["gapped"]
 
 
 def test_training_ingest_writes_success_and_then_skips(config_factory):
