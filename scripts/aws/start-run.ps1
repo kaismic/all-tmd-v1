@@ -38,7 +38,8 @@ Wait-AllTmdSsmOnline -InstanceId $instanceId
 
 $runnerUri = "s3://$bucket/all-tmd-v1/config/$RunId/run-trials-cloud.sh"
 $commandId = Send-AllTmdSsmCommand -InstanceId $instanceId -Commands @(
-    "set -Eeuo pipefail",
+    # AWS-RunShellScript executes this wrapper with /bin/sh, not Bash.
+    "set -eu",
     "aws s3 cp '$runnerUri' /tmp/run-trials-cloud.sh --only-show-errors",
     "chmod 0755 /tmp/run-trials-cloud.sh",
     "/tmp/run-trials-cloud.sh install --bucket '$bucket' --run-id '$RunId'"
