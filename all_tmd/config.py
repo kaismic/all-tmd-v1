@@ -34,7 +34,7 @@ class DatasetConfig:
     work_dir: Path
     minimum_trip_seconds: int
     maximum_trip_seconds: int
-    maximum_sample_interval_ms: int | None
+    collector_max_sample_interval_ms: int | None
 
 
 @dataclass(frozen=True)
@@ -115,7 +115,7 @@ class PipelineConfig:
     schema_version: int
     sources: SourcesConfig
     dataset: DatasetConfig
-    minimum_sampling_rate: dict[str, float]
+    collector_minimum_sampling_rate: dict[str, float]
     training: GlobalTrainingConfig
     mlflow: MlflowConfig
     trial: TrialConfig
@@ -161,27 +161,42 @@ class PipelineConfig:
                 f"configuration. Available: {available}"
             )
 
+        if "minimum_sampling_rate" in data:
+            raise ValueError(
+                "minimum_sampling_rate was renamed to "
+                "collector_minimum_sampling_rate"
+            )
         rates = {
             str(sensor): float(rate)
-            for sensor, rate in data["minimum_sampling_rate"].items()
+            for sensor, rate in data["collector_minimum_sampling_rate"].items()
         }
+        invalid_rates = sorted(
+            sensor
+            for sensor, rate in rates.items()
+            if not math.isfinite(rate) or rate <= 0
+        )
+        if invalid_rates:
+            raise ValueError(
+                "collector_minimum_sampling_rate must contain finite positive "
+                "values for: " + ", ".join(invalid_rates)
+            )
         missing_rates = sorted(set(trial.features.sensors) - set(rates))
         if missing_rates:
             raise ValueError(
-                "minimum_sampling_rate is missing configured sensor(s): "
+                "collector_minimum_sampling_rate is missing configured sensor(s): "
                 + ", ".join(missing_rates)
             )
         dataset = data["dataset"]
         training = data["training"]
         mlflow = data["mlflow"]
-        if "collector_max_sample_interval_ms" in dataset:
+        if "maximum_sample_interval_ms" in dataset:
             raise ValueError(
-                "dataset.collector_max_sample_interval_ms was renamed to "
-                "dataset.maximum_sample_interval_ms"
+                "dataset.maximum_sample_interval_ms was renamed to "
+                "dataset.collector_max_sample_interval_ms"
             )
-        maximum_sample_interval_ms = _optional_positive_int(
-            dataset.get("maximum_sample_interval_ms"),
-            "dataset.maximum_sample_interval_ms",
+        collector_max_sample_interval_ms = _optional_positive_int(
+            dataset.get("collector_max_sample_interval_ms"),
+            "dataset.collector_max_sample_interval_ms",
         )
         return cls(
             schema_version=int(data["schema_version"]),
@@ -193,9 +208,9 @@ class PipelineConfig:
                 work_dir=_path(dataset["work_dir"], "dataset.work_dir"),
                 minimum_trip_seconds=int(dataset["minimum_trip_seconds"]),
                 maximum_trip_seconds=int(dataset.get("maximum_trip_seconds", 28_800)),
-                maximum_sample_interval_ms=maximum_sample_interval_ms,
+                collector_max_sample_interval_ms=collector_max_sample_interval_ms,
             ),
-            minimum_sampling_rate=rates,
+            collector_minimum_sampling_rate=rates,
             training=GlobalTrainingConfig(
                 n_jobs=int(training["n_jobs"]),
                 timeout_seconds=(

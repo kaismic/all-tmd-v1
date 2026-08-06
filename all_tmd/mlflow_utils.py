@@ -44,6 +44,19 @@ def start_run(
             for sensor, aggregations in config.trial.features.sensors.items()
         },
     }
+    collector_quality_params = {
+        "collector_max_sample_interval_ms": (
+            config.dataset.collector_max_sample_interval_ms
+            if config.dataset.collector_max_sample_interval_ms is not None
+            else "disabled"
+        ),
+        **{
+            f"collector_minimum_sampling_rate.{sensor}": (
+                config.collector_minimum_sampling_rate[sensor]
+            )
+            for sensor in config.trial.features.sensors
+        },
+    }
     with mlflow.start_run(
         run_name=f"{config.trial.train_dataset}-{config.config_hash[:8]}"
     ) as run:
@@ -55,6 +68,7 @@ def start_run(
                 "window_seconds": config.trial.features.default_window_seconds,
                 "step_seconds": config.trial.features.default_step_seconds,
                 **feature_params,
+                **collector_quality_params,
                 "model_families": ",".join(config.trial.training.model_families),
                 "optuna_trials": config.trial.training.optuna_trials,
                 "collector_session_digest": collector_digest,

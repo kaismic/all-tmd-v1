@@ -254,10 +254,10 @@ are skipped on later runs. Collector event and feature directories contain a
 sessions append new Parquet parts without rebuilding existing sessions.
 
 Feature directories also contain `feature-policy.json`, which records the
-global sampling, continuity, and trip-duration settings that affect their
-contents. Missing, legacy, corrupt, or changed policy metadata causes that
-source's feature directory to be rebuilt automatically; event data remains
-reusable.
+settings that affect their contents. Collector policies include collector
+sampling and continuity settings; training-source policies do not. Missing,
+legacy, corrupt, or changed policy metadata causes only that source's feature
+directory to be rebuilt automatically; event data remains reusable.
 
 If a fixed training ingestion or feature build stops before writing `_SUCCESS`,
 the next run removes that incomplete directory and rebuilds it. Collector
@@ -284,19 +284,24 @@ concrete `TrainingDatasetAdapter` with a matching `dataset_name` in
 
 ## Features and training
 
-For every configured sensor, the minimum number of samples in a window is:
+For every configured sensor, the collector minimum number of samples in a
+window is:
 
 ```text
-default_window_seconds * minimum_sampling_rate[sensor]
+default_window_seconds * collector_minimum_sampling_rate[sensor]
 ```
 
-Windows missing the required count for any configured sensor are discarded.
-When `dataset.maximum_sample_interval_ms` is not `null`, each configured
-sensor must also cover the complete window without a gap greater than that
-value. The check includes the window-start-to-first-sample gap, consecutive
-sample gaps, and the last-sample-to-window-end gap. A discontinuous window is
-discarded without discarding other windows from the same session, and the same
-rule applies to training and collector data.
+Collector windows missing the required count for any configured sensor are
+discarded. When `dataset.collector_max_sample_interval_ms` is not `null`, each
+configured sensor must also cover the complete collector window without a gap
+greater than that value. The check includes the window-start-to-first-sample
+gap, consecutive sample gaps, and the last-sample-to-window-end gap. A bad
+window is discarded without discarding other windows from the same session.
+
+Training-source windows do not use the collector sampling-rate or continuity
+thresholds. They require at least one valid value for every configured sensor
+so feature aggregation remains defined. Sparse source windows may consequently
+produce degenerate statistics such as zero variance or range.
 
 Collector exports are emitted on accelerometer callbacks and carry the latest
 available values for the other sensors. Consequently, collector continuity is
@@ -304,9 +309,12 @@ evaluated from the timestamps represented in the export and cannot detect how
 long a cached gyroscope, magnetometer, or pressure value has remained
 unchanged.
 
-The former `dataset.collector_max_sample_interval_ms` key is no longer
-accepted. Rename it to `dataset.maximum_sample_interval_ms`; set the new key
-to `null` to disable temporal continuity filtering.
+The generic `minimum_sampling_rate` and
+`dataset.maximum_sample_interval_ms` keys are no longer accepted. Rename them
+to `collector_minimum_sampling_rate` and
+`dataset.collector_max_sample_interval_ms`, respectively. Set the maximum
+interval to `null` to disable collector continuity filtering while retaining
+collector minimum-count filtering.
 
 Feature columns use vector magnitude for accelerometer, gyroscope, and
 magnetometer, and the scalar pressure value for pressure.
@@ -347,6 +355,10 @@ fully qualified feature such as `accelerometer#standard_deviation`, and each
 configured sensor has its own comma-separated parameter such as
 `features.accelerometer=mean,standard_deviation,range`. Sensors omitted from a
 trial do not create `features.<sensor>` parameters.
+
+Runs also record `collector_max_sample_interval_ms` and one
+`collector_minimum_sampling_rate.<sensor>` parameter per configured sensor so
+collector quality filtering remains reproducible in MLflow.
 
 The **Datasets** section of each run records three native MLflow inputs: source
 training features, collector calibration features, and collector holdout

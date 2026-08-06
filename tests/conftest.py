@@ -15,15 +15,16 @@ def config_factory(tmp_path):
         *,
         train_dataset: str = "us-tmd",
         sensors: dict[str, list[str]] | None = None,
-        minimum_sampling_rate: dict[str, float] | None = None,
+        collector_minimum_sampling_rate: dict[str, float] | None = None,
         minimum_trip_seconds: int = 0,
-        maximum_sample_interval_ms: int | None = None,
-        legacy_collector_max_sample_interval_ms: int | None = None,
+        collector_max_sample_interval_ms: int | None = None,
+        generic_minimum_sampling_rate: dict[str, float] | None = None,
+        generic_maximum_sample_interval_ms: int | None = None,
         calibration_fraction: float = 0.5,
         mlflow_enabled: bool = False,
     ) -> PipelineConfig:
         sensors = sensors or {"accelerometer": ["mean"]}
-        minimum_sampling_rate = minimum_sampling_rate or {
+        collector_minimum_sampling_rate = collector_minimum_sampling_rate or {
             sensor: 1 for sensor in sensors
         }
         data_root = tmp_path / "data"
@@ -49,9 +50,11 @@ def config_factory(tmp_path):
                 "work_dir": str(data_root / "work"),
                 "minimum_trip_seconds": minimum_trip_seconds,
                 "maximum_trip_seconds": 28_800,
-                "maximum_sample_interval_ms": maximum_sample_interval_ms,
+                "collector_max_sample_interval_ms": (
+                    collector_max_sample_interval_ms
+                ),
             },
-            "minimum_sampling_rate": minimum_sampling_rate,
+            "collector_minimum_sampling_rate": collector_minimum_sampling_rate,
             "training": {
                 "n_jobs": 1,
                 "timeout_seconds": None,
@@ -63,9 +66,11 @@ def config_factory(tmp_path):
                 "tracking_uri": None,
             },
         }
-        if legacy_collector_max_sample_interval_ms is not None:
-            config_data["dataset"]["collector_max_sample_interval_ms"] = (
-                legacy_collector_max_sample_interval_ms
+        if generic_minimum_sampling_rate is not None:
+            config_data["minimum_sampling_rate"] = generic_minimum_sampling_rate
+        if generic_maximum_sample_interval_ms is not None:
+            config_data["dataset"]["maximum_sample_interval_ms"] = (
+                generic_maximum_sample_interval_ms
             )
         trial = {
             "train_dataset": train_dataset,

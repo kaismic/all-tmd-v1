@@ -91,6 +91,11 @@ def test_start_run_logs_dataset_inputs_and_collector_summary(
             "accelerometer": ["mean", "standard deviation"],
             "pressure": ["range"],
         },
+        collector_minimum_sampling_rate={
+            "accelerometer": 30,
+            "pressure": 2,
+        },
+        collector_max_sample_interval_ms=500,
     )
     frame = _dataset_frame()
     manifest = {
@@ -137,6 +142,12 @@ def test_start_run_logs_dataset_inputs_and_collector_summary(
     )
     assert recorded["params"]["collector_session_count"] == 2
     assert len(recorded["params"]["collector_session_digest"]) == 64
+    assert recorded["params"]["collector_max_sample_interval_ms"] == 500
+    assert (
+        recorded["params"]["collector_minimum_sampling_rate.accelerometer"]
+        == 30
+    )
+    assert recorded["params"]["collector_minimum_sampling_rate.pressure"] == 2
     assert [context for _, context in recorded["inputs"]] == [
         "training",
         "calibration",

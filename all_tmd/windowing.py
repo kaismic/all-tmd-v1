@@ -29,7 +29,7 @@ METADATA_COLUMNS = [
 FEATURE_BUCKETS = 64
 FEATURE_CHECKPOINT = "checkpoint.json"
 FEATURE_POLICY = "feature-policy.json"
-FEATURE_POLICY_SCHEMA_VERSION = 1
+FEATURE_POLICY_SCHEMA_VERSION = 2
 
 
 def build_features(config: PipelineConfig) -> dict[str, Path]:
@@ -55,7 +55,7 @@ def _build_source_features(
             f"Training event dataset is incomplete (missing _SUCCESS): {event_dir}"
         )
     output_dir = run_dir / "features" / source_name
-    expected_policy = _feature_policy(config)
+    expected_policy = _feature_policy(config, source_name)
     if output_dir.exists() and not _feature_policy_matches(
         output_dir / FEATURE_POLICY,
         expected_policy,
@@ -110,7 +110,7 @@ def _build_source_features(
                 ignore_index=True,
             ).sort_values(["session_id", "timestamp_ms"])
             bucket_ids = set(events["session_id"].astype(str))
-            features = feature_frame(events, config)
+            features = feature_frame(events, config, source_name)
             if not features.empty:
                 output_path = output_dir / f"part-{next_part:06d}.parquet"
                 features.to_parquet(output_path, index=False)
@@ -141,9 +141,34 @@ def _build_source_features(
             shutil.rmtree(temp_dir)
 
 
-def feature_frame(frame: pd.DataFrame, config: PipelineConfig) -> pd.DataFrame:
+def feature_frame(
+    frame: pd.DataFrame,
+    config: PipelineConfig,
+    source_name: str,
+) -> pd.DataFrame:
+    available_sources = {config.trial.train_dataset, "collector"}
+    if source_name not in available_sources:
+        raise ValueError(
+            f"Unsupported feature source '{source_name}'. "
+            f"Available: {', '.join(sorted(available_sources))}"
+        )
+    domains = set(frame["domain"].dropna().astype(str))
+    if domains and domains != {source_name}:
+        raise ValueError(
+            f"Feature source '{source_name}' received domain(s): "
+            + ", ".join(sorted(domains))
+        )
     feature_config = config.trial.features
-    minimum_samples = config.trial.minimum_samples(config.minimum_sampling_rate)
+    if source_name == "collector":
+        minimum_samples = config.trial.minimum_samples(
+            config.collector_minimum_sampling_rate
+        )
+        maximum_sample_interval_ms = (
+            config.dataset.collector_max_sample_interval_ms
+        )
+    else:
+        minimum_samples = {sensor: 1 for sensor in feature_config.sensors}
+        maximum_sample_interval_ms = None
     window_ms = feature_config.default_window_seconds * 1000
     step_ms = feature_config.default_step_seconds * 1000
     rows: list[dict[str, Any]] = []
@@ -179,7 +204,7 @@ def feature_frame(frame: pd.DataFrame, config: PipelineConfig) -> pd.DataFrame:
             if _meets_window_quality_requirements(
                 window,
                 minimum_samples,
-                config.dataset.maximum_sample_interval_ms,
+                maximum_sample_interval_ms,
                 cursor,
                 cursor + window_ms,
             ):
@@ -273,19 +298,28 @@ def _meets_window_quality_requirements(
     return True
 
 
-def _feature_policy(config: PipelineConfig) -> dict[str, Any]:
-    configured_rates = {
-        sensor: config.minimum_sampling_rate[sensor]
-        for sensor in sorted(config.trial.features.sensors)
-    }
-    return {
+def _feature_policy(
+    config: PipelineConfig,
+    source_name: str,
+) -> dict[str, Any]:
+    policy: dict[str, Any] = {
         "schema_version": FEATURE_POLICY_SCHEMA_VERSION,
+        "source_name": source_name,
         "trial_config_hash": config.config_hash,
-        "minimum_sampling_rate": configured_rates,
         "minimum_trip_seconds": config.dataset.minimum_trip_seconds,
         "maximum_trip_seconds": config.dataset.maximum_trip_seconds,
-        "maximum_sample_interval_ms": config.dataset.maximum_sample_interval_ms,
     }
+    if source_name == "collector":
+        policy["collector_sampling_quality"] = {
+            "collector_minimum_sampling_rate": {
+                sensor: config.collector_minimum_sampling_rate[sensor]
+                for sensor in sorted(config.trial.features.sensors)
+            },
+            "collector_max_sample_interval_ms": (
+                config.dataset.collector_max_sample_interval_ms
+            ),
+        }
+    return policy
 
 
 def _feature_policy_matches(path: Path, expected: dict[str, Any]) -> bool:

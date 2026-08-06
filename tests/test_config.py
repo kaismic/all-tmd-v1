@@ -65,42 +65,89 @@ def test_training_fields_do_not_affect_hash_or_cause_collision(config_factory):
 def test_minimum_samples_are_calculated_per_sensor(config_factory):
     config = config_factory(
         sensors={"accelerometer": ["mean"], "gyroscope": ["range"]},
-        minimum_sampling_rate={"accelerometer": 30, "gyroscope": 4},
+        collector_minimum_sampling_rate={"accelerometer": 30, "gyroscope": 4},
     )
-    assert config.trial.minimum_samples(config.minimum_sampling_rate) == {
+    assert config.trial.minimum_samples(
+        config.collector_minimum_sampling_rate
+    ) == {
         "accelerometer": 30,
         "gyroscope": 4,
     }
 
 
 def test_fractional_sample_requirement_rounds_up(config_factory):
-    config = config_factory(minimum_sampling_rate={"accelerometer": 1.5})
-    assert config.trial.minimum_samples(config.minimum_sampling_rate) == {
+    config = config_factory(
+        collector_minimum_sampling_rate={"accelerometer": 1.5}
+    )
+    assert config.trial.minimum_samples(
+        config.collector_minimum_sampling_rate
+    ) == {
         "accelerometer": 2,
     }
 
 
 def test_maximum_sample_interval_must_be_positive_or_null(config_factory):
-    disabled = config_factory(maximum_sample_interval_ms=None)
-    enabled = config_factory(maximum_sample_interval_ms=500)
-    assert disabled.dataset.maximum_sample_interval_ms is None
-    assert enabled.dataset.maximum_sample_interval_ms == 500
-    with pytest.raises(
-        ValueError,
-        match="dataset.maximum_sample_interval_ms must be greater than zero or null",
-    ):
-        config_factory(maximum_sample_interval_ms=0)
-
-
-def test_legacy_collector_maximum_interval_key_is_rejected(config_factory):
+    disabled = config_factory(collector_max_sample_interval_ms=None)
+    enabled = config_factory(collector_max_sample_interval_ms=500)
+    assert disabled.dataset.collector_max_sample_interval_ms is None
+    assert enabled.dataset.collector_max_sample_interval_ms == 500
     with pytest.raises(
         ValueError,
         match=(
-            "dataset.collector_max_sample_interval_ms was renamed to "
-            "dataset.maximum_sample_interval_ms"
+            "dataset.collector_max_sample_interval_ms must be greater than "
+            "zero or null"
         ),
     ):
-        config_factory(legacy_collector_max_sample_interval_ms=500)
+        config_factory(collector_max_sample_interval_ms=0)
+
+
+def test_generic_sampling_quality_keys_are_rejected(config_factory):
+    with pytest.raises(
+        ValueError,
+        match=(
+            "minimum_sampling_rate was renamed to "
+            "collector_minimum_sampling_rate"
+        ),
+    ):
+        config_factory(generic_minimum_sampling_rate={"accelerometer": 1})
+    with pytest.raises(
+        ValueError,
+        match=(
+            "dataset.maximum_sample_interval_ms was renamed to "
+            "dataset.collector_max_sample_interval_ms"
+        ),
+    ):
+        config_factory(generic_maximum_sample_interval_ms=500)
+
+
+@pytest.mark.parametrize("rate", [0, -1, float("nan"), float("inf")])
+def test_collector_minimum_sampling_rates_must_be_finite_and_positive(
+    config_factory,
+    rate,
+):
+    with pytest.raises(
+        ValueError,
+        match=(
+            "collector_minimum_sampling_rate must contain finite positive "
+            "values for: accelerometer"
+        ),
+    ):
+        config_factory(
+            collector_minimum_sampling_rate={"accelerometer": rate}
+        )
+
+
+def test_collector_minimum_sampling_rates_cover_selected_sensors(config_factory):
+    with pytest.raises(
+        ValueError,
+        match=(
+            "collector_minimum_sampling_rate is missing configured sensor.*pressure"
+        ),
+    ):
+        config_factory(
+            sensors={"accelerometer": ["mean"], "pressure": ["range"]},
+            collector_minimum_sampling_rate={"accelerometer": 30},
+        )
 
 
 def test_nor_source_accepts_a_file_path(config_factory, tmp_path):

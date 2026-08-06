@@ -84,15 +84,15 @@ all-tmd-work/<config-hash>/reports/nor-tmd/optuna-trials.csv
 ```
 
 ### Calculating minimum number of samples per window
-`minimum_samples_per_sensor` was removed from `model.config.yaml`, and instead a new field `minimum_sampling_rate` was added. You should utilise each hz values for each sensor to calculate the minimum number of samples per window by using the following equation:
+`minimum_samples_per_sensor` was removed from `model.config.yaml`, and instead a new field `collector_minimum_sampling_rate` was added. Its Hz values apply only to collector windows and calculate the minimum number of samples by using the following equation:
 
 ```
-minimum_samples_per_window = default_window_seconds * minimum_sampling_rate
+minimum_samples_per_window = default_window_seconds * collector_minimum_sampling_rate
 ```
 
 Suppose a `model.config.yaml` with the following configuration:
 ```
-minimum_sampling_rate: # hz
+collector_minimum_sampling_rate: # hz
   accelerometer: 30
   gyroscope: 4
   magnetometer: 2
@@ -108,16 +108,19 @@ minimum_samples_per_window = 10 * 30 = 300
 
 ### Per-window temporal continuity
 
-Feature windows must also remain temporally continuous when
-`dataset.maximum_sample_interval_ms` is configured. For every configured
+Collector feature windows must also remain temporally continuous when
+`dataset.collector_max_sample_interval_ms` is configured. For every configured
 sensor, feature extraction checks the window boundaries and consecutive valid
-sample timestamps. Only the affected window is excluded when a gap exceeds
-the threshold; the remaining windows in that session stay eligible. This
-quality rule applies to both training and collector datasets.
+sample timestamps. Only the affected collector window is excluded when a gap
+exceeds the threshold; the remaining windows in that session stay eligible.
+Training-source windows instead require one valid value per configured sensor
+and do not use the collector quality thresholds.
 
-Each feature directory records these global quality settings in
-`feature-policy.json`. A missing or changed policy automatically invalidates
-and rebuilds cached features while preserving normalized event data.
+Each feature directory records its effective settings in `feature-policy.json`.
+Collector settings appear only in the collector policy, so later quality
+changes rebuild collector features without invalidating training-source
+features. Missing or changed policies still rebuild the affected cached
+features while preserving normalized event data.
 
 ### Notes
 For any other undefined implementation details, adapt the implementation from `us-tmd-v2`.
