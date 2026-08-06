@@ -259,6 +259,14 @@ sampling and continuity settings; training-source policies do not. Missing,
 legacy, corrupt, or changed policy metadata causes only that source's feature
 directory to be rebuilt automatically; event data remains reusable.
 
+Long-running ingestion and feature operations emit flushed, timestamped
+progress. Collector scans report every input file and classify it as ingested,
+already processed, ignored, or duration-filtered, together with cumulative
+counters. Feature extraction reports checkpoint reconciliation, event-session
+scanning, input-part bucketing, bucket processing, and session processing. A
+10-second heartbeat is emitted while an individual session takes unusually
+long to window, so a quiet terminal does not look like a frozen pipeline.
+
 If a fixed training ingestion or feature build stops before writing `_SUCCESS`,
 the next run removes that incomplete directory and rebuilds it. Collector
 checkpoints are reconciled with existing Parquet parts after interruption.

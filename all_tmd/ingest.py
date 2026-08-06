@@ -193,28 +193,44 @@ def ingest_collector(config: PipelineConfig) -> Path:
     next_part = _next_part_number(output_dir)
     new_parts = 0
     new_rows = 0
+    already_processed_files = 0
+    ignored_files = 0
+    duration_filtered_files = 0
+    progress(
+        f"Collector ingest scan starting: files={len(files):,}, "
+        f"checkpoint_sessions={len(processed):,}"
+    )
     for index, path in enumerate(files, start=1):
         frame = normalize_collector_payload(path, config.trial.labels)
         if frame.empty:
-            continue
-        frame = frame[~frame["session_id"].astype(str).isin(processed)].copy()
-        if frame.empty:
-            continue
-        frame = _duration_filter(frame, config)
-        if frame.empty:
-            continue
-
-        part_path = output_dir / f"part-{next_part:06d}.parquet"
-        frame.to_parquet(part_path, index=False)
-        ingested_ids = set(frame["session_id"].astype(str))
-        processed.update(ingested_ids)
-        _write_checkpoint(checkpoint_path, processed)
-        next_part += 1
-        new_parts += 1
-        new_rows += len(frame)
+            ignored_files += 1
+            status = "ignored"
+        else:
+            frame = frame[~frame["session_id"].astype(str).isin(processed)].copy()
+            if frame.empty:
+                already_processed_files += 1
+                status = "already-processed"
+            else:
+                frame = _duration_filter(frame, config)
+                if frame.empty:
+                    duration_filtered_files += 1
+                    status = "duration-filtered"
+                else:
+                    part_path = output_dir / f"part-{next_part:06d}.parquet"
+                    frame.to_parquet(part_path, index=False)
+                    ingested_ids = set(frame["session_id"].astype(str))
+                    processed.update(ingested_ids)
+                    _write_checkpoint(checkpoint_path, processed)
+                    next_part += 1
+                    new_parts += 1
+                    new_rows += len(frame)
+                    status = "ingested"
         progress(
-            f"Collector ingest progress: files={index:,}/{len(files):,}, "
-            f"new_rows={new_rows:,}, new_parts={new_parts:,}"
+            f"Collector ingest file {index:,}/{len(files):,}: status={status}, "
+            f"new_rows={new_rows:,}, new_parts={new_parts:,}, "
+            f"already_processed={already_processed_files:,}, "
+            f"ignored={ignored_files:,}, duration_filtered={duration_filtered_files:,}, "
+            f"path={path}"
         )
 
     if not any(output_dir.glob("part-*.parquet")):
@@ -222,7 +238,10 @@ def ingest_collector(config: PipelineConfig) -> Path:
     _write_checkpoint(checkpoint_path, processed)
     progress(
         f"Collector ingest complete: new_rows={new_rows:,}, "
-        f"processed_sessions={len(processed):,}, output={output_dir}"
+        f"new_parts={new_parts:,}, processed_sessions={len(processed):,}, "
+        f"already_processed_files={already_processed_files:,}, "
+        f"ignored_files={ignored_files:,}, "
+        f"duration_filtered_files={duration_filtered_files:,}, output={output_dir}"
     )
     return output_dir
 
@@ -562,9 +581,24 @@ def _write_checkpoint(path: Path, session_ids: set[str]) -> None:
 
 def _existing_session_ids(output_dir: Path) -> set[str]:
     session_ids: set[str] = set()
-    for part in sorted(output_dir.glob("part-*.parquet")):
+    parts = sorted(output_dir.glob("part-*.parquet"))
+    if parts:
+        progress(
+            f"Collector checkpoint reconciliation starting: "
+            f"event_parts={len(parts):,}"
+        )
+    for part_index, part in enumerate(parts, start=1):
         frame = pd.read_parquet(part, columns=["session_id"])
         session_ids.update(frame["session_id"].dropna().astype(str))
+        progress(
+            f"Collector checkpoint reconciliation progress: "
+            f"part={part_index:,}/{len(parts):,}, sessions={len(session_ids):,}"
+        )
+    if parts:
+        progress(
+            f"Collector checkpoint reconciliation complete: "
+            f"event_parts={len(parts):,}, sessions={len(session_ids):,}"
+        )
     return session_ids
 
 

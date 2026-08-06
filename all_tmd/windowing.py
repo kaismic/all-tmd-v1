@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 import shutil
+import time
 from typing import Any
 
 import numpy as np
@@ -30,6 +31,7 @@ FEATURE_BUCKETS = 64
 FEATURE_CHECKPOINT = "checkpoint.json"
 FEATURE_POLICY = "feature-policy.json"
 FEATURE_POLICY_SCHEMA_VERSION = 2
+FEATURE_SESSION_HEARTBEAT_SECONDS = 10.0
 
 
 def build_features(config: PipelineConfig) -> dict[str, Path]:
@@ -75,8 +77,14 @@ def _build_source_features(
 
     processed = _read_checkpoint(checkpoint_path) if incremental else set()
     if incremental:
-        processed.update(_existing_feature_session_ids(output_dir))
-    pending_ids = _event_session_ids(event_dir) - processed
+        processed.update(_existing_feature_session_ids(output_dir, source_name))
+    event_session_ids = _event_session_ids(event_dir, source_name)
+    pending_ids = event_session_ids - processed
+    progress(
+        f"Feature extraction pending sessions: source={source_name}, "
+        f"event_sessions={len(event_session_ids):,}, "
+        f"processed_sessions={len(processed):,}, pending_sessions={len(pending_ids):,}"
+    )
     if not pending_ids:
         if incremental and any(output_dir.glob("part-*.parquet")):
             _write_checkpoint(checkpoint_path, processed)
@@ -96,6 +104,7 @@ def _build_source_features(
             temp_dir,
             pending_ids,
             _required_event_columns(config),
+            source_name,
         )
         next_part = _next_part_number(output_dir)
         total_rows = 0
@@ -105,12 +114,21 @@ def _build_source_features(
             parts = sorted(bucket_dir.glob("part-*.parquet"))
             if not parts:
                 continue
+            progress(
+                f"Feature bucket starting: source={source_name}, "
+                f"bucket={bucket_id + 1}/{FEATURE_BUCKETS}, input_parts={len(parts):,}"
+            )
             events = pd.concat(
                 (pd.read_parquet(part) for part in parts),
                 ignore_index=True,
             ).sort_values(["session_id", "timestamp_ms"])
             bucket_ids = set(events["session_id"].astype(str))
-            features = feature_frame(events, config, source_name)
+            features = feature_frame(
+                events,
+                config,
+                source_name,
+                report_progress=True,
+            )
             if not features.empty:
                 output_path = output_dir / f"part-{next_part:06d}.parquet"
                 features.to_parquet(output_path, index=False)
@@ -145,6 +163,8 @@ def feature_frame(
     frame: pd.DataFrame,
     config: PipelineConfig,
     source_name: str,
+    *,
+    report_progress: bool = False,
 ) -> pd.DataFrame:
     available_sources = {config.trial.train_dataset, "collector"}
     if source_name not in available_sources:
@@ -173,7 +193,14 @@ def feature_frame(
     step_ms = feature_config.default_step_seconds * 1000
     rows: list[dict[str, Any]] = []
 
-    for _, session in frame.groupby("session_id", sort=False):
+    session_groups = frame.groupby("session_id", sort=False)
+    session_count = session_groups.ngroups
+    for session_index, (_, session) in enumerate(session_groups, start=1):
+        if report_progress:
+            progress(
+                f"Feature session starting: source={source_name}, "
+                f"session={session_index:,}/{session_count:,}, event_rows={len(session):,}"
+            )
         session = session.sort_values("timestamp_ms")
         start = int(session["timestamp_ms"].min())
         end = int(session["timestamp_ms"].max())
@@ -183,6 +210,12 @@ def feature_frame(
             <= duration
             <= config.dataset.maximum_trip_seconds
         ):
+            if report_progress:
+                progress(
+                    f"Feature session complete: source={source_name}, "
+                    f"session={session_index:,}/{session_count:,}, "
+                    "status=duration-filtered, windows=0, kept=0"
+                )
             continue
         baselines = _session_baselines(
             session,
@@ -196,7 +229,11 @@ def feature_frame(
         )
         exclusive_end = end + sample_interval
         cursor = start
+        session_windows = 0
+        session_rows_before = len(rows)
+        last_heartbeat = time.monotonic()
         while cursor + window_ms <= exclusive_end:
+            session_windows += 1
             window = session[
                 (session["timestamp_ms"] >= cursor)
                 & (session["timestamp_ms"] < cursor + window_ms)
@@ -218,6 +255,24 @@ def feature_frame(
                     )
                 )
             cursor += step_ms
+            if (
+                report_progress
+                and time.monotonic() - last_heartbeat
+                >= FEATURE_SESSION_HEARTBEAT_SECONDS
+            ):
+                progress(
+                    f"Feature session progress: source={source_name}, "
+                    f"session={session_index:,}/{session_count:,}, "
+                    f"windows={session_windows:,}, "
+                    f"kept={len(rows) - session_rows_before:,}"
+                )
+                last_heartbeat = time.monotonic()
+        if report_progress:
+            progress(
+                f"Feature session complete: source={source_name}, "
+                f"session={session_index:,}/{session_count:,}, status=processed, "
+                f"windows={session_windows:,}, kept={len(rows) - session_rows_before:,}"
+            )
     return pd.DataFrame(rows)
 
 
@@ -365,12 +420,29 @@ def _bucket_pending_events(
     temp_dir: Path,
     pending_ids: set[str],
     columns: list[str],
+    source_name: str,
 ) -> None:
-    for part_number, part in enumerate(sorted(event_dir.glob("part-*.parquet"))):
+    parts = sorted(event_dir.glob("part-*.parquet"))
+    bucketed_rows = 0
+    progress(
+        f"Feature event bucketing starting: source={source_name}, "
+        f"input_parts={len(parts):,}, pending_sessions={len(pending_ids):,}"
+    )
+    for part_number, part in enumerate(parts):
+        progress(
+            f"Feature event part starting: source={source_name}, "
+            f"part={part_number + 1:,}/{len(parts):,}, path={part}"
+        )
         frame = pd.read_parquet(part, columns=columns)
         frame = frame[frame["session_id"].astype(str).isin(pending_ids)]
         if frame.empty:
+            progress(
+                f"Feature event part complete: source={source_name}, "
+                f"part={part_number + 1:,}/{len(parts):,}, pending_rows=0, "
+                f"bucketed_rows={bucketed_rows:,}"
+            )
             continue
+        bucketed_rows += len(frame)
         bucket_ids = (
             pd.util.hash_pandas_object(frame["session_id"].astype("string"), index=False)
             % FEATURE_BUCKETS
@@ -382,21 +454,62 @@ def _bucket_pending_events(
                 bucket_dir / f"part-{part_number:06d}.parquet",
                 index=False,
             )
+        progress(
+            f"Feature event part complete: source={source_name}, "
+            f"part={part_number + 1:,}/{len(parts):,}, "
+            f"pending_rows={len(frame):,}, bucketed_rows={bucketed_rows:,}"
+        )
+    progress(
+        f"Feature event bucketing complete: source={source_name}, "
+        f"input_parts={len(parts):,}, bucketed_rows={bucketed_rows:,}"
+    )
 
 
-def _event_session_ids(event_dir: Path) -> set[str]:
+def _event_session_ids(event_dir: Path, source_name: str) -> set[str]:
     result: set[str] = set()
-    for part in sorted(event_dir.glob("part-*.parquet")):
+    parts = sorted(event_dir.glob("part-*.parquet"))
+    progress(
+        f"Feature event session scan starting: source={source_name}, "
+        f"input_parts={len(parts):,}"
+    )
+    for part_index, part in enumerate(parts, start=1):
+        progress(
+            f"Feature event session scan part starting: source={source_name}, "
+            f"part={part_index:,}/{len(parts):,}, path={part}"
+        )
         frame = pd.read_parquet(part, columns=["session_id"])
         result.update(frame["session_id"].dropna().astype(str))
+        progress(
+            f"Feature event session scan part complete: source={source_name}, "
+            f"part={part_index:,}/{len(parts):,}, sessions={len(result):,}"
+        )
+    progress(
+        f"Feature event session scan complete: source={source_name}, "
+        f"input_parts={len(parts):,}, sessions={len(result):,}"
+    )
     return result
 
 
-def _existing_feature_session_ids(output_dir: Path) -> set[str]:
+def _existing_feature_session_ids(output_dir: Path, source_name: str) -> set[str]:
     result: set[str] = set()
-    for part in sorted(output_dir.glob("part-*.parquet")):
+    parts = sorted(output_dir.glob("part-*.parquet"))
+    if parts:
+        progress(
+            f"Feature checkpoint reconciliation starting: source={source_name}, "
+            f"feature_parts={len(parts):,}"
+        )
+    for part_index, part in enumerate(parts, start=1):
         frame = pd.read_parquet(part, columns=["session_id"])
         result.update(frame["session_id"].dropna().astype(str))
+        progress(
+            f"Feature checkpoint reconciliation progress: source={source_name}, "
+            f"part={part_index:,}/{len(parts):,}, sessions={len(result):,}"
+        )
+    if parts:
+        progress(
+            f"Feature checkpoint reconciliation complete: source={source_name}, "
+            f"feature_parts={len(parts):,}, sessions={len(result):,}"
+        )
     return result
 
 

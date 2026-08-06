@@ -67,6 +67,12 @@ all-tmd-work/<config-hash>/features/collector/part-000001.parquet
 
 Feature extraction should also be incremental, similar to raw data ingestion.
 
+Long-running collector scans and feature extraction stages should expose
+timestamped progress. Collector output should report each file's outcome and
+cumulative counters. Feature output should cover checkpoint reconciliation,
+event-session discovery, Parquet bucketing, bucket processing, and individual
+session windowing, including a periodic heartbeat for long sessions.
+
 ### Training & Testing
 For each trial, the models should be trained by utilising both the dataset specified by `train_dataset` field in the `trials.json` objects and the collector dataset, just like `adapt` phase in `us-tmd-v2`.
 The models should be tested/evaluated with the collector dataset.

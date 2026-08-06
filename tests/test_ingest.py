@@ -68,7 +68,12 @@ def test_nor_adapter_accepts_one_csv_or_a_directory(config_factory, tmp_path):
     assert directory_adapter.source.input_path == tmp_path / "data" / "nor"
 
 
-def test_collector_ingest_uses_checkpoint_and_appends(config_factory):
+def test_collector_ingest_uses_checkpoint_and_reports_progress(
+    config_factory,
+    monkeypatch,
+):
+    messages = []
+    monkeypatch.setattr("all_tmd.ingest.progress", messages.append)
     config = config_factory(collector_max_sample_interval_ms=500)
     input_dir = config.sources.collector.input_path
     input_dir.mkdir(parents=True)
@@ -85,6 +90,14 @@ def test_collector_ingest_uses_checkpoint_and_appends(config_factory):
     ingest_collector(config)
     assert len(list(output.glob("part-*.parquet"))) == 2
     assert json.loads((output / "checkpoint.json").read_text()) == ["one", "two"]
+    assert any("Collector ingest scan starting" in message for message in messages)
+    assert any(
+        "Collector checkpoint reconciliation" in message
+        for message in messages
+    )
+    assert any("status=ingested" in message for message in messages)
+    assert any("status=already-processed" in message for message in messages)
+    assert any("Collector ingest complete" in message for message in messages)
 
 
 def test_collector_ingest_keeps_session_with_sample_gap(config_factory):

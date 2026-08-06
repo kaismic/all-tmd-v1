@@ -113,7 +113,9 @@ def test_continuity_is_checked_per_sensor(config_factory):
     assert feature_frame(events, config, "collector").empty
 
 
-def test_features_are_incremental_per_source(config_factory):
+def test_features_are_incremental_per_source(config_factory, monkeypatch):
+    messages = []
+    monkeypatch.setattr("all_tmd.windowing.progress", messages.append)
     config = config_factory()
     run_dir = config.run_dir()
     source_dir = run_dir / "events" / "us-tmd"
@@ -144,6 +146,19 @@ def test_features_are_incremental_per_source(config_factory):
     )
     build_features(config)
     assert len(list(outputs["collector"].glob("part-*.parquet"))) == 2
+    expected_progress = (
+        "Feature event session scan starting",
+        "Feature event part starting",
+        "Feature event bucketing complete",
+        "Feature bucket starting",
+        "Feature session starting",
+        "Feature session complete",
+        "Feature extraction complete",
+    )
+    assert all(
+        any(expected in message for message in messages)
+        for expected in expected_progress
+    )
 
 
 def test_legacy_feature_policy_rebuilds_both_sources(config_factory):
