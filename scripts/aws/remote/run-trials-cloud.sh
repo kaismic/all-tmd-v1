@@ -103,15 +103,17 @@ execute_run() {
     validate_bucket "$ALL_TMD_AWS_BUCKET"
     validate_run_id "$ALL_TMD_RUN_ID"
 
-    local config_prefix="s3://$ALL_TMD_AWS_BUCKET/all-tmd-v1/config/$ALL_TMD_RUN_ID"
-    local result_prefix="s3://$ALL_TMD_AWS_BUCKET/all-tmd-v1/results/$ALL_TMD_RUN_ID"
-    local run_state_dir="$data_dir/cloud-runs/$ALL_TMD_RUN_ID"
-    local bundle_dir="$run_state_dir/config"
-    local log_path="$run_state_dir/run.log"
-    local resource_path="$run_state_dir/resource-usage.txt"
-    local start_epoch
-    local checkout=
-    local final_status=1
+    # These must outlive execute_run because the EXIT trap runs after the
+    # function has unwound on an early failure.
+    config_prefix="s3://$ALL_TMD_AWS_BUCKET/all-tmd-v1/config/$ALL_TMD_RUN_ID"
+    result_prefix="s3://$ALL_TMD_AWS_BUCKET/all-tmd-v1/results/$ALL_TMD_RUN_ID"
+    run_state_dir="$data_dir/cloud-runs/$ALL_TMD_RUN_ID"
+    bundle_dir="$run_state_dir/config"
+    log_path="$run_state_dir/run.log"
+    resource_path="$run_state_dir/resource-usage.txt"
+    start_epoch=
+    checkout=
+    final_status=1
     start_epoch=$(date +%s)
     mkdir -p "$bundle_dir"
     touch "$log_path"
@@ -271,8 +273,17 @@ PY
     ntfy_events=$(jq -r '.notifications.events // "all-trials"' "$manifest")
     token_parameter=$(jq -r '.notifications.token_parameter // ""' "$manifest")
     if [[ -n $ntfy_topic && -n $token_parameter ]]; then
-        ntfy_token=$(aws ssm get-parameter --name "$token_parameter" \
-            --with-decryption --query Parameter.Value --output text)
+        if ! ntfy_token=$(aws ssm get-parameter --name "$token_parameter" \
+            --with-decryption --query Parameter.Value --output text 2>&1); then
+            if [[ $ntfy_token == *ParameterNotFound* ]]; then
+                printf 'Notification token %s is absent; continuing without one.\n' \
+                    "$token_parameter"
+                ntfy_token=
+            else
+                printf '%s\n' "$ntfy_token" >&2
+                return 1
+            fi
+        fi
     fi
     if [[ $ntfy_server == *$'\n'* || $ntfy_topic == *$'\n'* \
         || $ntfy_events == *$'\n'* || $ntfy_token == *$'\n'* ]]; then
