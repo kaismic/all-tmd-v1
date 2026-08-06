@@ -17,6 +17,18 @@ $projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 Initialize-AwsContext -Region $Region -Profile $Profile
 
 $template = Join-Path $projectRoot "aws\cloudformation.yaml"
+& python -c `
+    "import sys; from pathlib import Path; import yaml; yaml.compose(Path(sys.argv[1]).read_text(encoding='utf-8'))" `
+    $template
+if ($LASTEXITCODE -ne 0) {
+    throw "CloudFormation template is not well-formed YAML: $template"
+}
+Invoke-AllTmdAws -Arguments @(
+    "cloudformation", "validate-template",
+    "--template-body", "file://$template",
+    "--output", "json"
+) | Out-Null
+
 $parameterOverrides = @(
     "InstanceType=$InstanceType",
     "DataVolumeSizeGiB=$DataVolumeSizeGiB",

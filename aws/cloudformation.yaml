@@ -27,10 +27,10 @@ Parameters:
   NtfyTokenParameterName:
     Type: String
     Default: /all-tmd-v1/ntfy-token
-    AllowedPattern: "^/[A-Za-z0-9_.\/-]+$"
+    AllowedPattern: '^/[A-Za-z0-9_./-]+$'
   BudgetNotificationEmail:
     Type: String
-    AllowedPattern: "^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$"
+    AllowedPattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
     Description: Email address that receives the USD 50 monthly EC2 budget alert.
 
 Conditions:
