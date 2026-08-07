@@ -97,10 +97,7 @@ modified:
 .\scripts\aws\status.ps1 -RunId <printed-smoke-run-id>
 ```
 
-After the smoke run succeeds, prepare the full bundle. The current
-`trial-parameters.json` generates eight outer trials: two sensor sets crossed
-with the 10/5, 20/10, 30/15, and 60/30 second window/step pairs. Each trial runs
-45 Optuna evaluations.
+After the smoke run succeeds, prepare the full bundle.
 
 ```powershell
 .\scripts\aws\prepare-run.ps1 -Mode Full -NtfyTopic your-topic
