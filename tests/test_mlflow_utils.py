@@ -54,10 +54,13 @@ def test_collector_session_summary_changes_with_session_membership():
 def test_dataset_digest_is_order_independent():
     frame = _dataset_frame()
 
-    assert dataset_digest(frame, FEATURE_NAMES) == dataset_digest(
+    digest = dataset_digest(frame, FEATURE_NAMES)
+
+    assert digest == dataset_digest(
         frame.sample(frac=1, random_state=11),
         FEATURE_NAMES,
     )
+    assert len(digest) == 36
 
 
 @pytest.mark.parametrize(
@@ -162,7 +165,7 @@ def test_start_run_logs_dataset_inputs_and_collector_summary(
         dataset.frame["session_id"].tolist()
         for dataset, _ in recorded["inputs"]
     ] == [["source-1", "source-2"], ["collector-1"], ["collector-2"]]
-    assert all(len(dataset.digest) == 64 for dataset, _ in recorded["inputs"])
+    assert all(len(dataset.digest) == 36 for dataset, _ in recorded["inputs"])
 
 
 def test_start_run_disabled_does_not_import_mlflow(config_factory, monkeypatch):

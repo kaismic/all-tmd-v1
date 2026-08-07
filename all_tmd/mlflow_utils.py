@@ -19,6 +19,7 @@ DATASET_ID_COLUMNS = (
     "window_start_ms",
     "window_end_ms",
 )
+MLFLOW_DATASET_DIGEST_LENGTH = 36
 
 
 @contextmanager
@@ -121,7 +122,7 @@ def dataset_digest(frame: pd.DataFrame, feature_names: Sequence[str]) -> str:
     digest.update(header)
     digest.update(b"\n")
     digest.update(row_hashes.tobytes())
-    return digest.hexdigest()
+    return digest.hexdigest()[:MLFLOW_DATASET_DIGEST_LENGTH]
 
 
 def log_dataset_inputs(

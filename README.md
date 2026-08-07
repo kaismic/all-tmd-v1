@@ -373,8 +373,9 @@ training features, collector calibration features, and collector holdout
 features. Each input has a deterministic content digest covering its labels,
 group and session IDs, window boundaries, and configured feature values. The
 digest is independent of row order but changes when any tracked content
-changes. Dataset contexts are `training`, `calibration`, and `evaluation`,
-respectively.
+changes. It uses the first 36 hexadecimal characters of the SHA-256 fingerprint
+to fit MLflow's dataset-digest field. Dataset contexts are `training`,
+`calibration`, and `evaluation`, respectively.
 
 Each new run also records `metrics.json`, the fitted model, Optuna trials, and
 the split manifest in the **Artifacts** tab. The `evaluation` artifact
