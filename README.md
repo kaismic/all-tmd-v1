@@ -114,6 +114,11 @@ port-forwarding session and browse to `http://localhost:5002`:
 .\scripts\aws\port-forward-mlflow.ps1
 ```
 
+The launcher waits for the worker to become available through Systems Manager,
+which is the service used to install the run. If the EC2 instance is stopped
+while it is starting, the launcher exits immediately with the observed EC2
+state instead of waiting for the generic EC2 status-check timeout.
+
 Download a completed run from its isolated S3 results prefix:
 
 ```powershell

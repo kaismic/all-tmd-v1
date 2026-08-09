@@ -50,6 +50,17 @@ function Get-AllTmdStackOutputs {
     return $result
 }
 
+function Get-AllTmdEc2InstanceState {
+    param([Parameter(Mandatory = $true)][string]$InstanceId)
+    $state = Invoke-AllTmdAws -Arguments @(
+        "ec2", "describe-instances",
+        "--instance-ids", $InstanceId,
+        "--query", "Reservations[0].Instances[0].State.Name",
+        "--output", "text"
+    )
+    return ($state | Out-String).Trim()
+}
+
 function Wait-AllTmdSsmOnline {
     param(
         [Parameter(Mandatory = $true)][string]$InstanceId,
@@ -57,6 +68,10 @@ function Wait-AllTmdSsmOnline {
     )
     $deadline = [DateTimeOffset]::UtcNow.AddSeconds($TimeoutSeconds)
     do {
+        $instanceState = Get-AllTmdEc2InstanceState -InstanceId $InstanceId
+        if ($instanceState -in @("stopping", "stopped", "shutting-down", "terminated")) {
+            throw "Instance $InstanceId entered EC2 state '$instanceState' while waiting for Systems Manager. It may have been stopped externally."
+        }
         $status = Invoke-AllTmdAws -Arguments @(
             "ssm", "describe-instance-information",
             "--filters", "Key=InstanceIds,Values=$InstanceId",

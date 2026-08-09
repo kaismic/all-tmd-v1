@@ -22,18 +22,15 @@ Invoke-AllTmdAws -Arguments @(
     "--key", "all-tmd-v1/config/$RunId/run-manifest.json",
     "--output", "json"
 ) | Out-Null
-$state = Invoke-AllTmdAws -Arguments @(
-    "ec2", "describe-instances", "--instance-ids", $instanceId,
-    "--query", "Reservations[0].Instances[0].State.Name", "--output", "text"
-)
-if (($state | Out-String).Trim() -eq "stopped") {
+$state = Get-AllTmdEc2InstanceState -InstanceId $instanceId
+if ($state -eq "stopped") {
     Invoke-AllTmdAws -Arguments @(
         "ec2", "start-instances", "--instance-ids", $instanceId, "--output", "json"
     ) | Out-Null
 }
-Invoke-AllTmdAws -Arguments @(
-    "ec2", "wait", "instance-status-ok", "--instance-ids", $instanceId
-) -AllowEmpty
+elseif ($state -in @("stopping", "shutting-down", "terminated")) {
+    throw "Instance $instanceId cannot start a run while it is '$state'."
+}
 Wait-AllTmdSsmOnline -InstanceId $instanceId
 
 $runnerUri = "s3://$bucket/all-tmd-v1/config/$RunId/run-trials-cloud.sh"

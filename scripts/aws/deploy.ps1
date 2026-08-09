@@ -50,9 +50,6 @@ Invoke-AllTmdAws -Arguments $deployArguments -AllowEmpty
 
 $outputs = Get-AllTmdStackOutputs -StackName $StackName
 $instanceId = $outputs.InstanceId
-Invoke-AllTmdAws -Arguments @(
-    "ec2", "wait", "instance-status-ok", "--instance-ids", $instanceId
-) -AllowEmpty
 Wait-AllTmdSsmOnline -InstanceId $instanceId
 
 $ready = $false
