@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import errno
 import json
 from pathlib import Path
+import shutil
 
 import pandas as pd
 
@@ -133,6 +135,41 @@ def test_training_ingest_writes_success_and_then_skips(config_factory):
     csv_path.write_text("", encoding="utf-8")
     assert ingest_training_dataset(config) == output
     assert sorted(output.glob("part-*.parquet")) == first_parts
+
+
+def test_training_ingest_retries_incomplete_directory_cleanup(
+    config_factory,
+    monkeypatch,
+):
+    config = config_factory()
+    input_dir = config.training_source.input_path
+    input_dir.mkdir(parents=True)
+    (input_dir / "sensorfile_U1_car_123.csv").write_text(
+        "0,android.sensor.accelerometer,1,2,3\n",
+        encoding="utf-8",
+    )
+    output_dir = config.run_dir() / "events" / "us-tmd"
+    output_dir.mkdir(parents=True)
+    (output_dir / "stale.parquet").write_text("incomplete", encoding="utf-8")
+
+    real_rmtree = shutil.rmtree
+    calls = 0
+
+    def transiently_busy_rmtree(path):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError(errno.ENOTEMPTY, "Directory not empty", path)
+        real_rmtree(path)
+
+    monkeypatch.setattr("all_tmd.ingest.shutil.rmtree", transiently_busy_rmtree)
+    monkeypatch.setattr("all_tmd.ingest.time.sleep", lambda _seconds: None)
+
+    output = ingest_training_dataset(config)
+
+    assert calls == 2
+    assert not (output / "stale.parquet").exists()
+    assert (output / "_SUCCESS").exists()
 
 
 def _write_collector(path: Path, session_id: str) -> None:

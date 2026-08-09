@@ -2,11 +2,13 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 import csv
+import errno
 import gzip
 import json
 from pathlib import Path
 import re
 import shutil
+import time
 from typing import Any, ClassVar, Iterable, Iterator
 
 import numpy as np
@@ -59,6 +61,8 @@ GRAVITY_METRES_PER_SECOND_SQUARED = 9.80665
 SENSOR_TYPE_PATTERN = re.compile(r"[^a-zA-Z0-9._-]")
 TIMESTAMP_PATTERN = re.compile(r"\d+")
 COLLECTOR_CHECKPOINT = "checkpoint.json"
+INCOMPLETE_DATASET_REMOVE_ATTEMPTS = 6
+INCOMPLETE_DATASET_REMOVE_DELAY_SECONDS = 0.05
 
 
 class TrainingDatasetAdapter(ABC):
@@ -152,7 +156,7 @@ def ingest_training_dataset(config: PipelineConfig) -> Path:
         return output_dir
     if output_dir.exists():
         progress(f"Removing incomplete training event dataset: {output_dir}")
-        shutil.rmtree(output_dir)
+        _remove_incomplete_dataset(output_dir)
     output_dir.mkdir(parents=True)
 
     rows = 0
@@ -178,6 +182,29 @@ def ingest_training_dataset(config: PipelineConfig) -> Path:
         f"rows={rows:,}, parts={parts:,}, output={output_dir}"
     )
     return output_dir
+
+
+def _remove_incomplete_dataset(path: Path) -> None:
+    for attempt in range(INCOMPLETE_DATASET_REMOVE_ATTEMPTS):
+        try:
+            shutil.rmtree(path)
+            return
+        except FileNotFoundError:
+            if not path.exists():
+                return
+            raise
+        except OSError as error:
+            if (
+                error.errno != errno.ENOTEMPTY
+                or attempt == INCOMPLETE_DATASET_REMOVE_ATTEMPTS - 1
+            ):
+                raise
+            delay = INCOMPLETE_DATASET_REMOVE_DELAY_SECONDS * (2**attempt)
+            progress(
+                f"Incomplete dataset directory remained non-empty; retrying in "
+                f"{delay:.2f}s: {path}"
+            )
+            time.sleep(delay)
 
 
 def ingest_collector(config: PipelineConfig) -> Path:
