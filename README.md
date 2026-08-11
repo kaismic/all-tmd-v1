@@ -127,6 +127,18 @@ Download a completed run from its isolated S3 results prefix:
   -Destination .\aws-results\<run-id>
 ```
 
+Compare the collector-holdout confusion matrices across all downloaded trial
+results by true transport label, limiting the output to the top-ranked trials:
+
+```powershell
+python .\scripts\compare-confusion-matrices.py bus 10
+```
+
+The script normalizes the selected true-label row, ranks trials by its diagonal
+(correct-prediction) value, and prints the MLflow trial name, full trial hash,
+normalized predicted-value array with its label order, and support. MLflow's
+duplicate artifact copies are excluded from the comparison.
+
 View the downloaded MLflow database and artifacts locally with Docker:
 
 ```powershell
