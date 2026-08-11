@@ -127,6 +127,29 @@ Download a completed run from its isolated S3 results prefix:
   -Destination .\aws-results\<run-id>
 ```
 
+View the downloaded MLflow database and artifacts locally with Docker:
+
+```powershell
+.\scripts\aws\view-results.ps1 -RunId <run-id>
+```
+
+The viewer starts the repository's pinned MLflow image in the background,
+waits for it to become healthy, and opens `http://127.0.0.1:5002`. Omit
+`-RunId` to select the most recently modified run beneath `aws-results` that
+contains an MLflow database. Use `-ResultsRoot` for a different download root,
+`-LocalPort` if port 5002 is occupied, or `-NoBrowser` to suppress automatic
+browser launch. The downloaded database and artifact directory are mounted
+directly, so the EC2 worker does not need to be running.
+
+Stop the local viewer when finished:
+
+```powershell
+.\scripts\aws\view-results.ps1 -Stop
+```
+
+Pass the same `-LocalPort` to `-Stop` when an alternate port was used. The
+viewer container is removed automatically; the downloaded results remain.
+
 The uploaded `run/run-summary.json` records the exit code, duration, vCPU and
 memory allocation. `run/resource-usage.txt` records GNU `time -v` measurements,
 including peak resident memory and CPU utilization. EC2 detailed monitoring
