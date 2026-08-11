@@ -1,6 +1,6 @@
 # All-TMD
 
-All-TMD trains a car/bus/train classifier from a selected immutable training
+All-TMD trains a transport mode classifier from a selected immutable training
 dataset plus collector calibration sessions, then evaluates the fitted model
 against collector holdout sessions. The first adapters support US-TMD and
 NOR-TMD; the shared pipeline is designed so another source can be added with
