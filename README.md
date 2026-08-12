@@ -379,7 +379,7 @@ MLflow is available at `http://localhost:5002`. Both trial runners start it
 automatically; to start it without running trials, use:
 
 ```powershell
-docker compose --profile mlflow up -d --wait mlflow
+  docker compose --profile mlflow up -d --wait mlflow
 ```
 
 Training containers connect to `http://mlflow:5002` on the Compose network.
@@ -393,6 +393,12 @@ rename or version the experiment. Instead, every run records the
 unique collector session IDs, plus `collector_session_count`. These fields make
 runs that use the same collector snapshot directly searchable and comparable
 without storing local download state in `model.config.yaml`.
+
+Run names use
+`<train-dataset>-<8-character-config-hash>-<UTC-start-time>-<collector-session-count>`,
+for example `nor-tmd-a1b2c3d4-20260812T034512Z-42`. The compact UTC timestamp
+distinguishes repeated runs of the same trial, while the final value makes the
+collector snapshot size visible in the MLflow run list.
 
 Run parameters also expose the complete configured feature set. The existing
 `sensors` parameter provides the sensor names, `feature_names` provides every

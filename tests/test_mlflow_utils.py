@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
+from datetime import datetime, timezone
 import sys
 from types import SimpleNamespace
 
@@ -12,11 +13,26 @@ from all_tmd.mlflow_utils import (
     collector_session_summary,
     dataset_digest,
     log_confusion_matrix,
+    mlflow_run_name,
     start_run,
 )
 
 
 FEATURE_NAMES = ["accelerometer#mean"]
+
+
+def test_mlflow_run_name_includes_utc_start_time_and_collector_count(
+    config_factory,
+):
+    config = config_factory()
+
+    name = mlflow_run_name(
+        config,
+        42,
+        datetime(2026, 8, 12, 3, 45, 12, tzinfo=timezone.utc),
+    )
+
+    assert name == f"us-tmd-{config.config_hash[:8]}-20260812T034512Z-42"
 
 
 def test_collector_session_summary_is_order_independent():
@@ -134,6 +150,10 @@ def test_start_run_logs_dataset_inputs_and_collector_summary(
         assert run == "active-run"
 
     assert recorded["experiment"] == "test"
+    assert recorded["run_name"].startswith(
+        f"us-tmd-{config.config_hash[:8]}-"
+    )
+    assert recorded["run_name"].endswith("Z-2")
     assert recorded["params"]["sensors"] == "accelerometer,pressure"
     assert recorded["params"]["features.accelerometer"] == (
         "mean,standard_deviation"

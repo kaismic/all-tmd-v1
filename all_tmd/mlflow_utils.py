@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
+from datetime import datetime, timezone
 import hashlib
 import json
 from pathlib import Path
@@ -58,8 +59,9 @@ def start_run(
             for sensor in config.trial.features.sensors
         },
     }
+    run_name = mlflow_run_name(config, collector_count)
     with mlflow.start_run(
-        run_name=f"{config.trial.train_dataset}-{config.config_hash[:8]}"
+        run_name=run_name
     ) as run:
         mlflow.log_params(
             {
@@ -78,6 +80,22 @@ def start_run(
         )
         log_dataset_inputs(config, frame, split_manifest)
         yield run
+
+
+def mlflow_run_name(
+    config: PipelineConfig,
+    collector_session_count: int,
+    started_at: datetime | None = None,
+) -> str:
+    """Build a run name containing its UTC start time and collector size."""
+    start_time = started_at or datetime.now(timezone.utc)
+    if start_time.tzinfo is None:
+        raise ValueError("MLflow run start time must include timezone information")
+    utc_time = start_time.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return (
+        f"{config.trial.train_dataset}-{config.config_hash[:8]}-"
+        f"{utc_time}-{collector_session_count}"
+    )
 
 
 def collector_session_summary(frame: pd.DataFrame) -> tuple[str, int]:
