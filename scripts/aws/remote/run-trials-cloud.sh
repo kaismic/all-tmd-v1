@@ -258,10 +258,17 @@ PY
         "$data_dir/downloaded_sessions" \
         "$data_dir/all-tmd-work"
     for source in nor-tmd-data us-tmd-data downloaded_sessions; do
+        if [[ $source == downloaded_sessions ]]; then
+            continue
+        fi
         aws s3 sync \
             "s3://$ALL_TMD_AWS_BUCKET/all-tmd-v1/inputs/$source" \
             "$data_dir/$source" --only-show-errors
     done
+    python3 "$bundle_dir/sync-collector-sessions.py" \
+        --bucket "$(jq -r .collector_sessions.bucket "$manifest")" \
+        --table "$(jq -r .collector_sessions.table "$manifest")" \
+        --output-dir "$data_dir/downloaded_sessions"
 
     local ntfy_server
     local ntfy_topic

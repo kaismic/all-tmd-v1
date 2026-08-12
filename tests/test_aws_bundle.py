@@ -11,6 +11,10 @@ from all_tmd.aws_bundle import create_run_bundle
 
 
 GIT_SHA = "a" * 40
+COLLECTOR_ARGUMENTS = {
+    "collector_sessions_bucket": "transport-data-sessions-123456789012",
+    "collector_sessions_table": "TransportSessions",
+}
 
 
 def test_full_bundle_generates_cartesian_trials_and_manifest(tmp_path):
@@ -25,6 +29,7 @@ def test_full_bundle_generates_cartesian_trials_and_manifest(tmp_path):
         git_commit=GIT_SHA,
         ntfy_topic="test-topic",
         created_at=datetime(2026, 8, 4, 12, tzinfo=timezone.utc),
+        **COLLECTOR_ARGUMENTS,
     )
 
     trials = json.loads((output / "trials.json").read_text(encoding="utf-8"))
@@ -34,6 +39,10 @@ def test_full_bundle_generates_cartesian_trials_and_manifest(tmp_path):
     assert manifest["mode"] == "full"
     assert manifest["notifications"]["topic"] == "test-topic"
     assert manifest["created_at"] == "2026-08-04T12:00:00+00:00"
+    assert manifest["collector_sessions"] == {
+        "bucket": COLLECTOR_ARGUMENTS["collector_sessions_bucket"],
+        "table": COLLECTOR_ARGUMENTS["collector_sessions_table"],
+    }
     for name, expected_digest in manifest["config_sha256"].items():
         assert hashlib.sha256((output / name).read_bytes()).hexdigest() == (
             expected_digest
@@ -51,6 +60,7 @@ def test_smoke_bundle_uses_first_trial_and_one_optuna_evaluation(tmp_path):
         git_repository="https://example.test/all-tmd-v1.git",
         git_commit=GIT_SHA,
         mode="smoke",
+        **COLLECTOR_ARGUMENTS,
     )
 
     trials = json.loads((output / "trials.json").read_text(encoding="utf-8"))
@@ -69,6 +79,7 @@ def test_bundle_rejects_unsafe_run_ids(tmp_path, run_id):
             run_id=run_id,
             git_repository="https://example.test/all-tmd-v1.git",
             git_commit=GIT_SHA,
+            **COLLECTOR_ARGUMENTS,
         )
 
 
@@ -81,6 +92,7 @@ def test_bundle_never_contains_notification_token(tmp_path):
         git_repository="https://example.test/all-tmd-v1.git",
         git_commit=GIT_SHA,
         ntfy_token_parameter="/private/token",
+        **COLLECTOR_ARGUMENTS,
     )
 
     combined = "\n".join(

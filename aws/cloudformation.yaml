@@ -24,6 +24,14 @@ Parameters:
     Type: String
     Default: ""
     Description: Optional globally unique bucket name; leave blank for a generated name.
+  CollectorSessionsBucketName:
+    Type: String
+    AllowedPattern: "^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$"
+    Description: S3 bucket created by the transport data collector backend.
+  CollectorSessionsTableName:
+    Type: String
+    AllowedPattern: "^[A-Za-z0-9_.-]{3,255}$"
+    Description: DynamoDB session table created by the collector backend.
   NtfyTokenParameterName:
     Type: String
     Default: /all-tmd-v1/ntfy-token
@@ -209,6 +217,21 @@ Resources:
                 Resource:
                   - !Sub ${DataBucket.Arn}/all-tmd-v1/inputs/*
                   - !Sub ${DataBucket.Arn}/all-tmd-v1/config/*
+              - Sid: QueryConfirmedCollectorSessions
+                Effect: Allow
+                Action: dynamodb:Query
+                Resource:
+                  - !Sub >-
+                    arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${CollectorSessionsTableName}
+                  - !Sub >-
+                    arn:${AWS::Partition}:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${CollectorSessionsTableName}/index/received-sync-index
+              - Sid: ReadConfirmedCollectorPayloads
+                Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:GetObjectVersion
+                Resource: !Sub >-
+                  arn:${AWS::Partition}:s3:::${CollectorSessionsBucketName}/raw/*
               - Sid: WriteResults
                 Effect: Allow
                 Action:
@@ -364,6 +387,10 @@ Resources:
 Outputs:
   BucketName:
     Value: !Ref DataBucket
+  CollectorSessionsBucketName:
+    Value: !Ref CollectorSessionsBucketName
+  CollectorSessionsTableName:
+    Value: !Ref CollectorSessionsTableName
   DataVolumeId:
     Value: !Ref DataVolume
   InstanceId:

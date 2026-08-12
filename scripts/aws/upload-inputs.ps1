@@ -13,7 +13,7 @@ $outputs = Get-AllTmdStackOutputs -StackName $StackName
 $bucket = $outputs.BucketName
 $resolvedDataDir = (Resolve-Path -LiteralPath $DataDir).Path
 
-foreach ($source in @("nor-tmd-data", "us-tmd-data", "downloaded_sessions")) {
+foreach ($source in @("nor-tmd-data", "us-tmd-data")) {
     $sourcePath = Join-Path $resolvedDataDir $source
     if (-not (Test-Path -LiteralPath $sourcePath -PathType Container)) {
         throw "Input directory was not found: $sourcePath"
@@ -25,4 +25,4 @@ foreach ($source in @("nor-tmd-data", "us-tmd-data", "downloaded_sessions")) {
         "--only-show-errors"
     ) -AllowEmpty
 }
-Write-Host "All immutable inputs are present in S3."
+Write-Host "All immutable training inputs are present in S3. Collector sessions are downloaded directly by the EC2 worker."

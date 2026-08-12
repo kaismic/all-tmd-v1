@@ -7,6 +7,7 @@ param(
     [string]$InstanceType = "c7i.4xlarge",
     [int]$DataVolumeSizeGiB = 200,
     [string]$BucketName = "",
+    [string]$CollectorStackName = "transport-data-collector",
     [string]$NtfyTokenParameterName = "/all-tmd-v1/ntfy-token",
     [switch]$LeaveRunning
 )
@@ -15,6 +16,10 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 . (Join-Path $PSScriptRoot "common.ps1")
 Initialize-AwsContext -Region $Region -Profile $Profile
+$collectorOutputs = Get-AllTmdStackOutputs -StackName $CollectorStackName
+if (-not $collectorOutputs.SessionsBucketName -or -not $collectorOutputs.SessionsTableName) {
+    throw "Collector stack $CollectorStackName does not expose SessionsBucketName and SessionsTableName."
+}
 
 $template = Join-Path $projectRoot "aws\cloudformation.yaml"
 & python -c `
@@ -34,6 +39,8 @@ $parameterOverrides = @(
     "DataVolumeSizeGiB=$DataVolumeSizeGiB",
     "BudgetNotificationEmail=$BudgetEmail",
     "NtfyTokenParameterName=$NtfyTokenParameterName"
+    "CollectorSessionsBucketName=$($collectorOutputs.SessionsBucketName)"
+    "CollectorSessionsTableName=$($collectorOutputs.SessionsTableName)"
 )
 if ($BucketName) {
     $parameterOverrides += "BucketName=$BucketName"
@@ -50,6 +57,22 @@ Invoke-AllTmdAws -Arguments $deployArguments -AllowEmpty
 
 $outputs = Get-AllTmdStackOutputs -StackName $StackName
 $instanceId = $outputs.InstanceId
+$instanceState = Get-AllTmdEc2InstanceState -InstanceId $instanceId
+if ($instanceState -eq "stopping") {
+    Invoke-AllTmdAws -Arguments @(
+        "ec2", "wait", "instance-stopped", "--instance-ids", $instanceId
+    ) -AllowEmpty
+    $instanceState = "stopped"
+}
+if ($instanceState -eq "stopped") {
+    Invoke-AllTmdAws -Arguments @(
+        "ec2", "start-instances", "--instance-ids", $instanceId,
+        "--output", "json"
+    ) | Out-Null
+}
+elseif ($instanceState -in @("shutting-down", "terminated")) {
+    throw "Worker $instanceId cannot be validated because it is $instanceState."
+}
 Wait-AllTmdSsmOnline -InstanceId $instanceId
 
 $ready = $false

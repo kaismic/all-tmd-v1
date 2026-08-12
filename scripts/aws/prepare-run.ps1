@@ -58,6 +58,8 @@ try {
         "--ntfy-topic", $NtfyTopic,
         "--ntfy-events", $NtfyEvents,
         "--ntfy-token-parameter", $outputs.NtfyTokenParameterName
+        "--collector-sessions-bucket", $outputs.CollectorSessionsBucketName
+        "--collector-sessions-table", $outputs.CollectorSessionsTableName
     )
     if ($NoAutoStop) { $arguments += "--no-auto-stop" }
     Push-Location $projectRoot
@@ -69,6 +71,8 @@ try {
         Pop-Location
     }
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot "remote\run-trials-cloud.sh") `
+        -Destination $bundleDir
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot "remote\sync-collector-sessions.py") `
         -Destination $bundleDir
     $prefix = "s3://$($outputs.BucketName)/all-tmd-v1/config/$RunId/"
     Invoke-AllTmdAws -Arguments @(

@@ -147,8 +147,12 @@ notification parameter name. A smoke bundle reduces the first generated trial
 to one Optuna evaluation; a full bundle preserves all generated trials. The
 current parameter document produces eight full trials.
 
-The worker downloads inputs to persistent EBS and runs the existing Bash and
-Docker Compose entry points under a one-shot systemd service. It retrieves the
+The worker downloads immutable training inputs from the ML bucket and queries
+the collector backend's received-session index at each run startup to copy new
+confirmed collector payloads directly from its S3 bucket to persistent EBS.
+The sync is checkpointed and gives every trial sweep a stable collector
+snapshot. The worker runs the existing Bash and Docker Compose entry points
+under a one-shot systemd service. It retrieves the
 ntfy token from SSM Parameter Store, keeps MLflow private behind an SSM port
 forward, uploads run-specific reports/models/splits plus MLflow and diagnostic
 state, and stops the EC2 instance after success or failure. There is no public

@@ -32,6 +32,8 @@ def create_run_bundle(
     ntfy_topic: str = "",
     ntfy_events: str = "all-trials",
     ntfy_token_parameter: str = "/all-tmd-v1/ntfy-token",
+    collector_sessions_bucket: str = "",
+    collector_sessions_table: str = "",
     auto_stop: bool = True,
     created_at: datetime | None = None,
 ) -> dict[str, Any]:
@@ -47,6 +49,10 @@ def create_run_bundle(
         raise ValueError("git_repository must not be empty")
     if not re.fullmatch(r"[0-9a-fA-F]{40}", git_commit):
         raise ValueError("git_commit must be a full 40-character Git SHA")
+    if not collector_sessions_bucket.strip():
+        raise ValueError("collector_sessions_bucket must not be empty")
+    if not collector_sessions_table.strip():
+        raise ValueError("collector_sessions_table must not be empty")
 
     root = Path(project_root)
     destination = Path(output_dir)
@@ -93,6 +99,10 @@ def create_run_bundle(
             "events": ntfy_events,
             "token_parameter": ntfy_token_parameter,
         },
+        "collector_sessions": {
+            "bucket": collector_sessions_bucket,
+            "table": collector_sessions_table,
+        },
         "auto_stop": auto_stop,
     }
     (destination / "run-manifest.json").write_text(
@@ -115,6 +125,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ntfy-server", default="https://ntfy.sh")
     parser.add_argument("--ntfy-topic", default="")
     parser.add_argument("--ntfy-events", default="all-trials")
+    parser.add_argument("--collector-sessions-bucket", required=True)
+    parser.add_argument("--collector-sessions-table", required=True)
     parser.add_argument(
         "--ntfy-token-parameter",
         default="/all-tmd-v1/ntfy-token",
@@ -136,6 +148,8 @@ def main(argv: list[str] | None = None) -> int:
         ntfy_topic=args.ntfy_topic,
         ntfy_events=args.ntfy_events,
         ntfy_token_parameter=args.ntfy_token_parameter,
+        collector_sessions_bucket=args.collector_sessions_bucket,
+        collector_sessions_table=args.collector_sessions_table,
         auto_stop=not args.no_auto_stop,
     )
     print(

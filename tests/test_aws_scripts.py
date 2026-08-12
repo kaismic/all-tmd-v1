@@ -12,12 +12,32 @@ def test_worker_setup_waits_for_ssm_instead_of_ec2_status_checks():
         assert '"instance-status-ok"' not in script
 
 
+def test_deploy_starts_an_existing_stopped_worker_before_validation():
+    deploy = (AWS_SCRIPTS / "deploy.ps1").read_text(encoding="utf-8")
+
+    assert 'if ($instanceState -eq "stopped")' in deploy
+    assert '"ec2", "start-instances"' in deploy
+    assert "Wait-AllTmdSsmOnline -InstanceId $instanceId" in deploy
+
+
 def test_ssm_wait_detects_an_externally_stopped_instance():
     common = (AWS_SCRIPTS / "common.ps1").read_text(encoding="utf-8")
 
     assert "Get-AllTmdEc2InstanceState" in common
     assert '"stopping", "stopped", "shutting-down", "terminated"' in common
     assert "It may have been stopped externally." in common
+
+
+def test_cloud_runner_syncs_collector_backend_directly():
+    runner = (AWS_SCRIPTS / "remote" / "run-trials-cloud.sh").read_text(
+        encoding="utf-8"
+    )
+    uploader = (AWS_SCRIPTS / "upload-inputs.ps1").read_text(encoding="utf-8")
+
+    assert 'python3 "$bundle_dir/sync-collector-sessions.py"' in runner
+    assert '--output-dir "$data_dir/downloaded_sessions"' in runner
+    assert '@("nor-tmd-data", "us-tmd-data")' in uploader
+    assert 'all-tmd-v1/inputs/$source' in uploader
 
 
 def test_downloaded_results_viewer_uses_pinned_local_mlflow_server():

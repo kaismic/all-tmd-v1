@@ -43,9 +43,11 @@ volume, and a private encrypted S3 bucket. The worker has no inbound security
 group rules; administration and MLflow port forwarding use Systems Manager.
 
 The EC2 data volume is mounted at `/mnt/all-tmd-data` on the host and at `/data`
-inside the existing Compose services. Input files are copied from S3 on the
-first run, while active events, features, MLflow state, and checkpoints remain
-on EBS for reuse. Every run uploads its reports, models, splits, configuration,
+inside the existing Compose services. Immutable training inputs are copied from
+the ML S3 bucket, while confirmed collector sessions are downloaded directly
+from the collector backend's S3 bucket at the start of every run. Collector
+downloads, active events, features, MLflow state, and checkpoints remain on EBS
+for incremental reuse. Every run uploads its reports, models, splits, configuration,
 logs, resource-usage report, and MLflow state to S3 before stopping the worker.
 The worker also stops after pipeline failure, once diagnostics are uploaded.
 
@@ -57,13 +59,19 @@ checks out the full Git SHA recorded in each run bundle. The default preparation
 command refuses a dirty worktree to prevent a local-only code revision from
 being mistaken for the remote revision.
 
-Deploy the stack with the email address that should receive the USD 50 monthly
-EC2 budget alert:
+Deploy the collector backend first, then deploy this stack with the email
+address that should receive the USD 50 monthly EC2 budget alert. The deploy
+script reads the collector bucket and table from the `transport-data-collector`
+CloudFormation stack; use `-CollectorStackName` if it has a different name:
 
 ```powershell
 aws login
 .\scripts\aws\deploy.ps1 -BudgetEmail you@example.com
 ```
+
+Re-run this deployment command once after upgrading an existing All-TMD stack;
+that applies the collector read permissions to its worker role. The script
+temporarily starts a stopped worker for validation and stops it again afterward.
 
 The deployment validates Docker, Compose, the EBS mount, and Systems Manager,
 then stops the initialized worker unless `-LeaveRunning` is supplied. The stack
@@ -78,12 +86,19 @@ The token is never included in S3 run bundles or uploaded from the local `.env`:
 .\scripts\aws\set-ntfy-token.ps1
 ```
 
-Upload the immutable inputs once. `aws s3 sync` performs multipart transfer for
-the large NOR-TMD source and does not delete remote objects:
+Upload the immutable training inputs once. `aws s3 sync` performs multipart
+transfer for the large NOR-TMD source and does not delete remote objects.
+Collector sessions are not uploaded through this command:
 
 ```powershell
 .\scripts\aws\upload-inputs.ps1 -DataDir D:\tmd-data
 ```
+
+At the start of each EC2 run, the worker queries the collector backend's
+`received-sync-index`, downloads newly confirmed `participant_###` payloads
+directly from its `raw/` S3 prefix, and records a persistent EBS checkpoint.
+Uploads confirmed after that startup sync are intentionally picked up by the
+next run, so a trial always trains against a stable collector snapshot.
 
 ### Smoke and full runs
 
