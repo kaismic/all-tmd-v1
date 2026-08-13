@@ -142,6 +142,19 @@ Download a completed run from its isolated S3 results prefix:
   -Destination .\aws-results\<run-id>
 ```
 
+Find the best trial in one downloaded run by a collector-holdout selector
+metric and display that metric together with recall for every transport mode:
+
+```powershell
+python .\scripts\show-best-trial.py `
+  collector_holdout.balanced_accuracy `
+  <run-id>
+```
+
+The other accepted selectors are `collector_holdout.accuracy` and
+`collector_holdout.macro_f1`. The script reads canonical trial reports beneath
+`aws-results/<run-id>/work` and excludes duplicate MLflow artifact copies.
+
 Compare the collector-holdout confusion matrices across all downloaded trial
 results by true transport label, limiting the output to the top-ranked trials:
 
