@@ -268,7 +268,9 @@ PY
     python3 "$bundle_dir/sync-collector-sessions.py" \
         --bucket "$(jq -r .collector_sessions.bucket "$manifest")" \
         --table "$(jq -r .collector_sessions.table "$manifest")" \
-        --output-dir "$data_dir/downloaded_sessions"
+        --output-dir "$data_dir/downloaded_sessions" \
+        --snapshot-path "$run_state_dir/collector-snapshot.json" \
+        --run-id "$ALL_TMD_RUN_ID"
 
     local ntfy_server
     local ntfy_topic

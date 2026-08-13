@@ -36,6 +36,8 @@ def test_cloud_runner_syncs_collector_backend_directly():
 
     assert 'python3 "$bundle_dir/sync-collector-sessions.py"' in runner
     assert '--output-dir "$data_dir/downloaded_sessions"' in runner
+    assert '--snapshot-path "$run_state_dir/collector-snapshot.json"' in runner
+    assert '--run-id "$ALL_TMD_RUN_ID"' in runner
     assert '@("nor-tmd-data", "us-tmd-data")' in uploader
     assert 'all-tmd-v1/inputs/$source' in uploader
 

@@ -142,6 +142,36 @@ Download a completed run from its isolated S3 results prefix:
   -Destination .\aws-results\<run-id>
 ```
 
+Print the collector payload snapshot captured at the start of a downloaded run:
+
+```powershell
+python .\scripts\report-collector-snapshot.py <run-id>
+```
+
+The report includes the number of sessions, total sample and uploaded-duration
+figures by transport mode, and uploaded duration by participant and mode. New
+EC2 runs upload `run/collector-snapshot.json`, containing the sorted session IDs
+and the session metadata needed to reproduce this report without access to EBS
+or the collector backend. The manifest also records its RunId, capture time,
+source checkpoint, session count, and SHA-256 digest of the session-ID set.
+
+Runs created before this manifest was introduced can still be reported when
+the same collector payload sidecars remain locally. Their session membership is
+reconstructed from the uploaded `run/run.log`; the sidecars supply mode,
+participant, sample count, and duration metadata. The command reads
+`ALL_TMD_DATA_DIR` from the environment or `.env`, or accepts an explicit path:
+
+```powershell
+python .\scripts\report-collector-snapshot.py `
+  <legacy-run-id> `
+  --sessions-dir D:\tmd-data\downloaded_sessions
+```
+
+This is the raw payload snapshot fixed at sweep startup. A trial can use fewer
+sessions after duration and feature-window quality filtering. Each MLflow run's
+`collector_session_count` and `collector_session_digest` identify that trial's
+effective collector feature-frame membership.
+
 Find the best trial in one downloaded run by a collector-holdout selector
 metric and display that metric together with recall for every transport mode:
 

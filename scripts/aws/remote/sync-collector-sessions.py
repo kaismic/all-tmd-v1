@@ -4,6 +4,8 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timezone
+import hashlib
 import json
 import re
 import subprocess
@@ -12,9 +14,27 @@ from typing import Any
 
 
 CHECKPOINT_VERSION = 1
+SNAPSHOT_SCHEMA_VERSION = 1
 INDEX_NAME = "received-sync-index"
 PARTICIPANT_PATTERN = re.compile(r"^participant_\d{3}$")
 SYNC_PARTITION = "received"
+SNAPSHOT_TEXT_FIELDS = (
+    "session_id",
+    "participant_id",
+    "device_uuid",
+    "vehicle_type",
+    "phone_position",
+    "s3_key",
+    "sync_key",
+)
+SNAPSHOT_INTEGER_FIELDS = (
+    "trimmed_start_ms",
+    "trimmed_end_ms",
+    "started_at_ms",
+    "stopped_at_ms",
+    "uploaded_at_ms",
+    "sample_count",
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -24,6 +44,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bucket", required=True)
     parser.add_argument("--table", required=True)
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument(
+        "--snapshot-path",
+        type=Path,
+        help="Write a manifest of every collector payload present after sync.",
+    )
+    parser.add_argument(
+        "--run-id",
+        help="AWS run ID to record in --snapshot-path.",
+    )
     return parser.parse_args()
 
 
@@ -147,6 +176,103 @@ def write_json_atomic(path: Path, value: Any) -> None:
     temporary.replace(path)
 
 
+def integer_or_none(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def session_duration_seconds(item: dict[str, Any]) -> float | None:
+    for start_key, end_key in (
+        ("trimmed_start_ms", "trimmed_end_ms"),
+        ("started_at_ms", "stopped_at_ms"),
+    ):
+        start = integer_or_none(item.get(start_key))
+        end = integer_or_none(item.get(end_key))
+        if start is not None and end is not None and end >= start:
+            return (end - start) / 1000
+    return None
+
+
+def session_id_digest(session_ids: list[str]) -> str:
+    canonical = json.dumps(
+        sorted(set(session_ids)),
+        ensure_ascii=True,
+        separators=(",", ":"),
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def snapshot_session(item: dict[str, Any]) -> dict[str, Any]:
+    session = {
+        key: str(item[key])
+        for key in SNAPSHOT_TEXT_FIELDS
+        if item.get(key) not in (None, "")
+    }
+    for key in SNAPSHOT_INTEGER_FIELDS:
+        value = integer_or_none(item.get(key))
+        if value is not None:
+            session[key] = value
+    session["duration_seconds"] = session_duration_seconds(item)
+    return session
+
+
+def collector_snapshot_sessions(output_dir: Path) -> list[dict[str, Any]]:
+    sessions_by_id: dict[str, dict[str, Any]] = {}
+    for metadata_path in sorted(output_dir.rglob("*.metadata.json")):
+        item = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if not isinstance(item, dict) or not is_eligible(item):
+            continue
+
+        payload_path = destination_for(output_dir, str(item["s3_key"]))
+        if not payload_path.is_file():
+            raise ValueError(
+                f"Collector snapshot sidecar has no payload: {metadata_path}"
+            )
+        session_id = item.get("session_id")
+        if not isinstance(session_id, str) or not session_id:
+            raise ValueError(
+                f"Collector snapshot sidecar has no session_id: {metadata_path}"
+            )
+        if session_id in sessions_by_id:
+            raise ValueError(f"Duplicate collector snapshot session_id: {session_id}")
+        sessions_by_id[session_id] = snapshot_session(item)
+    return [sessions_by_id[session_id] for session_id in sorted(sessions_by_id)]
+
+
+def write_collector_snapshot(
+    path: Path,
+    *,
+    run_id: str,
+    bucket: str,
+    table: str,
+    output_dir: Path,
+) -> dict[str, Any]:
+    sessions = collector_snapshot_sessions(output_dir)
+    session_ids = [str(session["session_id"]) for session in sessions]
+    checkpoint_path = output_dir / ".download_checkpoint.json"
+    last_sync_key = read_checkpoint(checkpoint_path, bucket, table)
+    snapshot = {
+        "schema_version": SNAPSHOT_SCHEMA_VERSION,
+        "run_id": run_id,
+        "captured_at": datetime.now(timezone.utc).isoformat(),
+        "source": {
+            "bucket": bucket,
+            "table": table,
+            "index": INDEX_NAME,
+            "last_sync_key": last_sync_key,
+        },
+        "session_count": len(sessions),
+        "session_id_digest": session_id_digest(session_ids),
+        "sessions": sessions,
+    }
+    write_json_atomic(path, snapshot)
+    return snapshot
+
+
 def download_session(bucket: str, output_dir: Path, item: dict[str, Any]) -> bool:
     s3_key = str(item["s3_key"])
     destination = destination_for(output_dir, s3_key)
@@ -204,7 +330,18 @@ def sync(bucket: str, table: str, output_dir: Path) -> dict[str, int]:
 
 def main() -> None:
     args = parse_args()
+    if bool(args.snapshot_path) != bool(args.run_id):
+        raise ValueError("--snapshot-path and --run-id must be provided together")
     result = sync(args.bucket, args.table, args.output_dir)
+    if args.snapshot_path:
+        snapshot = write_collector_snapshot(
+            args.snapshot_path,
+            run_id=args.run_id,
+            bucket=args.bucket,
+            table=args.table,
+            output_dir=args.output_dir,
+        )
+        result["snapshot_session_count"] = snapshot["session_count"]
     print(json.dumps(result, separators=(",", ":")), flush=True)
 
 
