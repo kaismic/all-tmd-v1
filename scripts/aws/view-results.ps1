@@ -4,7 +4,7 @@ param(
     [Parameter(ParameterSetName = "Start")]
     [string]$ResultsRoot = "",
     [ValidateRange(1, 65535)]
-    [int]$LocalPort = 5002,
+    [int]$LocalPort = 5003,
     [Parameter(ParameterSetName = "Start")]
     [switch]$NoBrowser,
     [Parameter(ParameterSetName = "Stop", Mandatory = $true)]

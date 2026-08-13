@@ -161,10 +161,12 @@ View the downloaded MLflow database and artifacts locally with Docker:
 ```
 
 The viewer starts the repository's pinned MLflow image in the background,
-waits for it to become healthy, and opens `http://127.0.0.1:5002`. Omit
+waits for it to become healthy, and opens `http://127.0.0.1:5003`. This uses a
+different default host port from the local Docker trial UI at
+`http://localhost:5002`, so both can run at the same time. Omit
 `-RunId` to select the most recently modified run beneath `aws-results` that
 contains an MLflow database. Use `-ResultsRoot` for a different download root,
-`-LocalPort` if port 5002 is occupied, or `-NoBrowser` to suppress automatic
+`-LocalPort` if port 5003 is occupied, or `-NoBrowser` to suppress automatic
 browser launch. The downloaded database and artifact directory are mounted
 directly, so the EC2 worker does not need to be running.
 
