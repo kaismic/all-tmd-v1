@@ -12,6 +12,12 @@ sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
+def test_format_duration_always_includes_hours_minutes_and_seconds():
+    assert MODULE.format_duration(0) == "00:00:00"
+    assert MODULE.format_duration(3155) == "00:52:35"
+    assert MODULE.format_duration((52 * 60 + 35) * 60) == "52:35:00"
+
+
 def test_main_reports_uploaded_snapshot_by_mode_and_participant(tmp_path, capsys):
     sessions = [
         {
@@ -49,11 +55,11 @@ def test_main_reports_uploaded_snapshot_by_mode_and_participant(tmp_path, capsys
     output = capsys.readouterr().out
     assert result == 0
     assert "Transport Mode Summary" in output
-    assert "bus" in output and "2:00" in output
-    assert "train" in output and "1:00" in output
+    assert "bus" in output and "00:02:00" in output
+    assert "train" in output and "00:01:00" in output
     assert "participant_001" in output
     assert "participant_002" in output
-    assert "Total" in output and "3:00" in output
+    assert "Total" in output and "00:03:00" in output
 
 
 def test_main_reconstructs_legacy_run_from_log_and_sidecars(tmp_path, capsys):
@@ -96,7 +102,7 @@ def test_main_reconstructs_legacy_run_from_log_and_sidecars(tmp_path, capsys):
     assert result == 0
     assert "legacy run.log plus sidecars" in output
     assert "car" in output
-    assert "0:30" in output
+    assert "00:00:30" in output
 
 
 def test_main_rejects_manifest_for_another_run(tmp_path, capsys):

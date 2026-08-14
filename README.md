@@ -149,11 +149,13 @@ python .\scripts\report-collector-snapshot.py <run-id>
 ```
 
 The report includes the number of sessions, total sample and uploaded-duration
-figures by transport mode, and uploaded duration by participant and mode. New
-EC2 runs upload `run/collector-snapshot.json`, containing the sorted session IDs
-and the session metadata needed to reproduce this report without access to EBS
-or the collector backend. The manifest also records its RunId, capture time,
-source checkpoint, session count, and SHA-256 digest of the session-ID set.
+figures by transport mode, and uploaded duration by participant and mode.
+Durations use `HH:MM:SS`, including zero-valued fields (for example,
+`52:35:00`). New EC2 runs upload `run/collector-snapshot.json`, containing the
+sorted session IDs and the session metadata needed to reproduce this report
+without access to EBS or the collector backend. The manifest also records its
+RunId, capture time, source checkpoint, session count, and SHA-256 digest of the
+session-ID set.
 
 Runs created before this manifest was introduced can still be reported when
 the same collector payload sidecars remain locally. Their session membership is
