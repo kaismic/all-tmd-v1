@@ -49,6 +49,7 @@ class MlflowConfig:
     enabled: bool
     experiment_name: str
     tracking_uri: str | None
+    artifact_location: str | None
 
 
 @dataclass(frozen=True)
@@ -224,6 +225,7 @@ class PipelineConfig:
                 enabled=bool(mlflow["enabled"]),
                 experiment_name=str(mlflow["experiment_name"]),
                 tracking_uri=mlflow.get("tracking_uri"),
+                artifact_location=mlflow.get("artifact_location"),
             ),
             trial=trial,
             trial_index=trial_index,

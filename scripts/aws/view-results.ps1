@@ -143,14 +143,16 @@ if ($null -ne $existing) {
     exit 0
 }
 
-$mount = "type=bind,source=$mlflowDirectory,target=/data/all-tmd-work"
+$legacyMount = "type=bind,source=$mlflowDirectory,target=/data/all-tmd-work"
+$serverlessMount = "type=bind,source=$mlflowDirectory,target=/mlflow-data"
 $dockerArguments = @(
     "run", "--detach", "--rm",
     "--name", $containerName,
     "--label", "$viewerLabel=true",
     "--label", "$runIdLabel=$RunId",
     "--publish", "127.0.0.1:${LocalPort}:5002",
-    "--mount", $mount,
+    "--mount", $legacyMount,
+    "--mount", $serverlessMount,
     $image,
     "mlflow", "server",
     "--host", "0.0.0.0",

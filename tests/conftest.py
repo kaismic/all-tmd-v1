@@ -22,6 +22,8 @@ def config_factory(tmp_path):
         generic_maximum_sample_interval_ms: int | None = None,
         calibration_fraction: float | dict[str, float] = 0.5,
         mlflow_enabled: bool = False,
+        mlflow_tracking_uri: str | None = None,
+        mlflow_artifact_location: str | None = None,
     ) -> PipelineConfig:
         sensors = sensors or {"accelerometer": ["mean"]}
         collector_minimum_sampling_rate = collector_minimum_sampling_rate or {
@@ -63,7 +65,8 @@ def config_factory(tmp_path):
             "mlflow": {
                 "enabled": mlflow_enabled,
                 "experiment_name": "test",
-                "tracking_uri": None,
+                "tracking_uri": mlflow_tracking_uri,
+                "artifact_location": mlflow_artifact_location,
             },
         }
         if generic_minimum_sampling_rate is not None:

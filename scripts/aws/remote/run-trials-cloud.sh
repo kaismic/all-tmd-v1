@@ -11,7 +11,9 @@ usage() {
     printf '%s\n' \
         "Usage:" \
         "  run-trials-cloud.sh install --bucket BUCKET --run-id RUN_ID" \
-        "  run-trials-cloud.sh execute"
+        "  run-trials-cloud.sh execute" \
+        "  run-trials-cloud.sh start-mlflow --run-id RUN_ID" \
+        "  run-trials-cloud.sh stop-mlflow --run-id RUN_ID"
 }
 
 validate_bucket() {
@@ -91,6 +93,71 @@ metadata_document() {
     curl --fail --silent --show-error \
         --header "X-aws-ec2-metadata-token: $token" \
         http://169.254.169.254/latest/dynamic/instance-identity/document
+}
+
+manage_mlflow_server() {
+    local action=$1
+    shift
+    local expected_run_id=
+    while (($#)); do
+        case "$1" in
+            --run-id)
+                expected_run_id=${2:-}
+                shift 2
+                ;;
+            *)
+                usage >&2
+                return 2
+                ;;
+        esac
+    done
+    validate_run_id "$expected_run_id" || {
+        printf '%s\n' "Invalid run ID." >&2
+        return 2
+    }
+    [[ -r $state_dir/run.env ]] || {
+        printf '%s\n' "Run state is missing: $state_dir/run.env" >&2
+        return 1
+    }
+    # shellcheck disable=SC1091
+    source "$state_dir/run.env"
+    if [[ $ALL_TMD_RUN_ID != "$expected_run_id" ]]; then
+        printf 'Active run is %s, not %s.\n' \
+            "$ALL_TMD_RUN_ID" "$expected_run_id" >&2
+        return 1
+    fi
+
+    local run_state_dir="$data_dir/cloud-runs/$ALL_TMD_RUN_ID"
+    local manifest="$run_state_dir/config/run-manifest.json"
+    [[ -f $manifest ]] || {
+        printf '%s\n' "Active run manifest is not available yet." >&2
+        return 1
+    }
+    local git_commit
+    git_commit=$(jq -r .git_commit "$manifest")
+    [[ $git_commit =~ ^[0-9a-f]{40}$ ]] || {
+        printf '%s\n' "Active run manifest has an invalid Git commit." >&2
+        return 1
+    }
+    local checkout="/opt/all-tmd-v1/checkouts/$git_commit"
+    [[ -f $checkout/docker-compose.yml && -f $checkout/.env ]] || {
+        printf '%s\n' "Active run checkout is not ready for MLflow." >&2
+        return 1
+    }
+
+    case "$action" in
+        start)
+            (cd "$checkout" && \
+                docker compose --profile mlflow up -d --wait mlflow)
+            ;;
+        stop)
+            (cd "$checkout" && \
+                docker compose --profile mlflow stop mlflow)
+            ;;
+        *)
+            return 2
+            ;;
+    esac
 }
 
 execute_run() {
@@ -188,16 +255,13 @@ for trial in trials:
 PY
             )
         fi
-        if [[ -d $data_dir/all-tmd-work/mlartifacts ]]; then
-            aws s3 sync "$data_dir/all-tmd-work/mlartifacts" \
-                "$result_prefix/mlflow/mlartifacts" --only-show-errors || true
-        fi
-        if [[ -f $data_dir/all-tmd-work/mlflow.db ]]; then
-            aws s3 cp "$data_dir/all-tmd-work/mlflow.db" \
-                "$result_prefix/mlflow/mlflow.db" --only-show-errors || true
+        if [[ -d $run_state_dir/mlflow ]]; then
+            aws s3 sync "$run_state_dir/mlflow" \
+                "$result_prefix/mlflow" --only-show-errors || true
         fi
         aws s3 sync "$run_state_dir" "$result_prefix/run" \
-            --exclude "config/*" --only-show-errors || true
+            --exclude "config/*" --exclude "mlflow/*" \
+            --only-show-errors || true
 
         local auto_stop=false
         if [[ -f $bundle_dir/run-manifest.json ]]; then
@@ -256,7 +320,8 @@ PY
         "$data_dir/nor-tmd-data" \
         "$data_dir/us-tmd-data" \
         "$data_dir/downloaded_sessions" \
-        "$data_dir/all-tmd-work"
+        "$data_dir/all-tmd-work" \
+        "$run_state_dir/mlflow/mlartifacts"
     for source in nor-tmd-data us-tmd-data downloaded_sessions; do
         if [[ $source == downloaded_sessions ]]; then
             continue
@@ -301,6 +366,13 @@ PY
     fi
     {
         printf 'ALL_TMD_DATA_DIR=%s\n' "$data_dir"
+        printf 'ALL_TMD_MLFLOW_DATA_DIR=%s\n' "$run_state_dir/mlflow"
+        printf 'MLFLOW_TRACKING_URI=%s\n' \
+            'sqlite:////mlflow-data/mlflow.db'
+        printf 'MLFLOW_BACKEND_STORE_URI=%s\n' \
+            'sqlite:////mlflow-data/mlflow.db'
+        printf 'MLFLOW_ARTIFACTS_DESTINATION=%s\n' \
+            '/mlflow-data/mlartifacts'
         printf 'NTFY_SERVER=%s\n' "$ntfy_server"
         printf 'NTFY_TOPIC=%s\n' "$ntfy_topic"
         printf 'NTFY_TOKEN=%s\n' "$ntfy_token"
@@ -309,6 +381,7 @@ PY
     chmod 0600 "$checkout/.env"
 
     printf 'Starting %s All-TMD trial(s).\n' "$(jq length "$checkout/trials.json")"
+    export ALL_TMD_SKIP_MLFLOW_SERVER=true
     set +e
     (
         cd "$checkout"
@@ -326,6 +399,14 @@ case ${1:-} in
         ;;
     execute)
         execute_run
+        ;;
+    start-mlflow)
+        shift
+        manage_mlflow_server start "$@"
+        ;;
+    stop-mlflow)
+        shift
+        manage_mlflow_server stop "$@"
         ;;
     *)
         usage >&2

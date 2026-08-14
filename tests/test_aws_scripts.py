@@ -42,6 +42,39 @@ def test_cloud_runner_syncs_collector_backend_directly():
     assert 'all-tmd-v1/inputs/$source' in uploader
 
 
+def test_cloud_runner_uses_serverless_run_specific_mlflow_storage():
+    runner = (AWS_SCRIPTS / "remote" / "run-trials-cloud.sh").read_text(
+        encoding="utf-8"
+    )
+    trial_runner = (AWS_SCRIPTS.parent / "run-trials.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert "ALL_TMD_SKIP_MLFLOW_SERVER=true" in runner
+    assert '[[ ${ALL_TMD_SKIP_MLFLOW_SERVER:-false} != true ]]' in trial_runner
+    assert 'ALL_TMD_MLFLOW_DATA_DIR=%s' in runner
+    assert 'MLFLOW_TRACKING_URI=%s' in runner
+    assert 'aws s3 sync "$run_state_dir/mlflow"' in runner
+    assert '"$result_prefix/mlflow" --only-show-errors' in runner
+    assert '$data_dir/all-tmd-work/mlflow.db' not in runner
+    assert '$data_dir/all-tmd-work/mlartifacts' not in runner
+
+
+def test_port_forward_starts_and_stops_on_demand_mlflow():
+    forwarder = (AWS_SCRIPTS / "port-forward-mlflow.ps1").read_text(
+        encoding="utf-8"
+    )
+    runner = (AWS_SCRIPTS / "remote" / "run-trials-cloud.sh").read_text(
+        encoding="utf-8"
+    )
+
+    assert '[Parameter(Mandatory = $true)]' in forwarder
+    assert "start-mlflow --run-id '$RunId'" in forwarder
+    assert "stop-mlflow --run-id '$RunId'" in forwarder
+    assert "start-mlflow)" in runner
+    assert "stop-mlflow)" in runner
+
+
 def test_downloaded_results_viewer_uses_pinned_local_mlflow_server():
     viewer = (AWS_SCRIPTS / "view-results.ps1").read_text(encoding="utf-8")
 
@@ -50,6 +83,7 @@ def test_downloaded_results_viewer_uses_pinned_local_mlflow_server():
     assert '"127.0.0.1:${LocalPort}:5002"' in viewer
     assert "sqlite:////data/all-tmd-work/mlflow.db" in viewer
     assert '"--artifacts-destination", "/data/all-tmd-work/mlartifacts"' in viewer
+    assert "target=/mlflow-data" in viewer
     assert '"--label", "$viewerLabel=true"' in viewer
     assert '"--rm"' in viewer
 

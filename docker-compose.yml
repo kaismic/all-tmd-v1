@@ -84,6 +84,9 @@ services:
       NTFY_TOKEN: ${NTFY_TOKEN:-}
       NTFY_EVENTS: ${NTFY_EVENTS:-steps}
       MLFLOW_TRACKING_URI: ${MLFLOW_TRACKING_URI:-http://mlflow:5002}
+    volumes:
+      - ${ALL_TMD_DATA_DIR:-./data}:/data
+      - ${ALL_TMD_MLFLOW_DATA_DIR:-./data/all-tmd-work}:/mlflow-data
     command:
       - python
       - -m
@@ -113,6 +116,7 @@ services:
       - "5002:5002"
     volumes:
       - ${ALL_TMD_DATA_DIR:-./data}:/data
+      - ${ALL_TMD_MLFLOW_DATA_DIR:-./data/all-tmd-work}:/mlflow-data
     command:
       - mlflow
       - server
@@ -121,9 +125,9 @@ services:
       - --port
       - "5002"
       - --backend-store-uri
-      - sqlite:////data/all-tmd-work/mlflow.db
+      - ${MLFLOW_BACKEND_STORE_URI:-sqlite:////data/all-tmd-work/mlflow.db}
       - --artifacts-destination
-      - /data/all-tmd-work/mlartifacts
+      - ${MLFLOW_ARTIFACTS_DESTINATION:-/data/all-tmd-work/mlartifacts}
       - --allowed-hosts
       - mlflow:5002,localhost:*,127.0.0.1:*
     healthcheck:

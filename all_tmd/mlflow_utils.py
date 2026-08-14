@@ -36,7 +36,7 @@ def start_run(
 
     if config.mlflow.tracking_uri:
         mlflow.set_tracking_uri(config.mlflow.tracking_uri)
-    mlflow.set_experiment(config.mlflow.experiment_name)
+    _set_experiment(mlflow, config)
     collector_digest, collector_count = collector_session_summary(frame)
     feature_params = {
         "sensors": ",".join(config.trial.features.sensors),
@@ -85,6 +85,29 @@ def start_run(
         )
         log_dataset_inputs(config, frame, split_manifest)
         yield run
+
+
+def _set_experiment(mlflow: Any, config: PipelineConfig) -> None:
+    artifact_location = config.mlflow.artifact_location
+    if not artifact_location:
+        mlflow.set_experiment(config.mlflow.experiment_name)
+        return
+
+    experiment = mlflow.get_experiment_by_name(config.mlflow.experiment_name)
+    if experiment is None:
+        experiment_id = mlflow.create_experiment(
+            config.mlflow.experiment_name,
+            artifact_location=artifact_location,
+        )
+    else:
+        if experiment.artifact_location != artifact_location:
+            raise ValueError(
+                f"MLflow experiment '{config.mlflow.experiment_name}' uses "
+                f"artifact location {experiment.artifact_location!r}, expected "
+                f"{artifact_location!r}"
+            )
+        experiment_id = experiment.experiment_id
+    mlflow.set_experiment(experiment_id=experiment_id)
 
 
 def mlflow_run_name(

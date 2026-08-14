@@ -38,3 +38,4 @@ mlflow:
   enabled: true
   experiment_name: ALL-TMD
   tracking_uri: null
+  artifact_location: null

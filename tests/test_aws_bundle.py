@@ -6,8 +6,13 @@ import json
 from pathlib import Path
 
 import pytest
+import yaml
 
-from all_tmd.aws_bundle import create_run_bundle
+from all_tmd.aws_bundle import (
+    AWS_MLFLOW_ARTIFACT_LOCATION,
+    AWS_MLFLOW_TRACKING_URI,
+    create_run_bundle,
+)
 
 
 GIT_SHA = "a" * 40
@@ -42,6 +47,15 @@ def test_full_bundle_generates_cartesian_trials_and_manifest(tmp_path):
     assert manifest["collector_sessions"] == {
         "bucket": COLLECTOR_ARGUMENTS["collector_sessions_bucket"],
         "table": COLLECTOR_ARGUMENTS["collector_sessions_table"],
+    }
+    model_config = yaml.safe_load(
+        (output / "model.config.yaml").read_text(encoding="utf-8")
+    )
+    assert model_config["mlflow"] == {
+        "enabled": True,
+        "experiment_name": "ALL-TMD",
+        "tracking_uri": AWS_MLFLOW_TRACKING_URI,
+        "artifact_location": AWS_MLFLOW_ARTIFACT_LOCATION,
     }
     for name, expected_digest in manifest["config_sha256"].items():
         assert hashlib.sha256((output / name).read_bytes()).hexdigest() == (
@@ -106,7 +120,11 @@ def _project(tmp_path: Path) -> Path:
     project = tmp_path / "project"
     project.mkdir(exist_ok=True)
     (project / "model.config.yaml").write_text(
-        "schema_version: 1\n",
+        "schema_version: 1\n"
+        "mlflow:\n"
+        "  enabled: false\n"
+        "  experiment_name: ALL-TMD\n"
+        "  tracking_uri: null\n",
         encoding="utf-8",
     )
     parameters = {

@@ -77,11 +77,13 @@ run_trials() {
         return "$status"
     fi
 
-    docker compose --profile mlflow up -d --wait mlflow
-    status=$?
-    if ((status != 0)); then
-        printf 'MLflow failed to start with exit code %d.\n' "$status" >&2
-        return "$status"
+    if [[ ${ALL_TMD_SKIP_MLFLOW_SERVER:-false} != true ]]; then
+        docker compose --profile mlflow up -d --wait mlflow
+        status=$?
+        if ((status != 0)); then
+            printf 'MLflow failed to start with exit code %d.\n' "$status" >&2
+            return "$status"
+        fi
     fi
 
     for ((index = 0; index < trial_count; index++)); do

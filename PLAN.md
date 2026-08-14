@@ -152,8 +152,12 @@ the collector backend's received-session index at each run startup to copy new
 confirmed collector payloads directly from its S3 bucket to persistent EBS.
 The sync is checkpointed and gives every trial sweep a stable collector
 snapshot. The worker runs the existing Bash and Docker Compose entry points
-under a one-shot systemd service. It retrieves the
-ntfy token from SSM Parameter Store, keeps MLflow private behind an SSM port
-forward, uploads run-specific reports/models/splits plus MLflow and diagnostic
-state, and stops the EC2 instance after success or failure. There is no public
-application API, model schema, or trial schema change for cloud execution.
+under a one-shot systemd service. It retrieves the ntfy token from SSM
+Parameter Store and records MLflow metadata and artifacts directly into
+run-specific SQLite and filesystem storage, so no MLflow server consumes
+capacity during normal trial execution. An on-demand server can be started
+through the SSM port-forward command for an active run and is stopped when the
+viewing session closes. The worker uploads run-specific reports/models/splits
+plus MLflow and diagnostic state, and stops the EC2 instance after success or
+failure. There is no public application API, model schema, or trial schema
+change for cloud execution.

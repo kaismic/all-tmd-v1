@@ -40,15 +40,18 @@ The AWS runner is intended for occasional, long CPU sweeps that should continue
 without keeping the local computer available. It deploys one On-Demand
 `c7i.4xlarge` worker in `ap-southeast-2`, an encrypted 200 GiB `gp3` data
 volume, and a private encrypted S3 bucket. The worker has no inbound security
-group rules; administration and MLflow port forwarding use Systems Manager.
+group rules; administration and on-demand MLflow port forwarding use Systems
+Manager.
 
 The EC2 data volume is mounted at `/mnt/all-tmd-data` on the host and at `/data`
 inside the existing Compose services. Immutable training inputs are copied from
 the ML S3 bucket, while confirmed collector sessions are downloaded directly
 from the collector backend's S3 bucket at the start of every run. Collector
-downloads, active events, features, MLflow state, and checkpoints remain on EBS
-for incremental reuse. Every run uploads its reports, models, splits, configuration,
-logs, resource-usage report, and MLflow state to S3 before stopping the worker.
+downloads, active events, features, and checkpoints remain on EBS for
+incremental reuse. Each run writes its own MLflow SQLite database and artifacts
+directly to isolated run storage, without a tracking server. Every run uploads
+its reports, models, splits, configuration, logs, resource-usage report, and
+run-specific MLflow state to S3 before stopping the worker.
 The worker also stops after pipeline failure, once diagnostics are uploaded.
 
 ### Prerequisites and deployment
@@ -122,12 +125,21 @@ After the smoke run succeeds, prepare the full bundle.
 `start-run.ps1` returns after installing and starting a one-shot systemd
 service. The service continues when the Session Manager connection or local
 computer closes. Obtain a status and recent journald lines at any time with
-`status.ps1`. While the worker and MLflow container are running, open a private
-port-forwarding session and browse to `http://localhost:5002`:
+`status.ps1`. The EC2 trial runner does not start an MLflow server. To inspect an
+unusually long active run, start one temporarily and open a private
+port-forwarding session at `http://localhost:5002`:
 
 ```powershell
-.\scripts\aws\port-forward-mlflow.ps1
+.\scripts\aws\port-forward-mlflow.ps1 -RunId <active-run-id>
 ```
+
+The command starts the server through Systems Manager, keeps it available for
+the forwarding session, and stops it when the session closes. Training keeps
+writing directly to the run's SQLite database, so MLflow recording never
+depends on the UI server. The MLflow run is created before Optuna begins, but
+intermediate Optuna fold and trial scores are currently reported only through
+`status.ps1` and journald; MLflow metrics and artifacts are logged when that
+training step finishes.
 
 The launcher waits for the worker to become available through Systems Manager,
 which is the service used to install the run. If the EC2 instance is stopped
@@ -461,8 +473,9 @@ field, changing them does not change the configuration hash. Existing ingested
 events and extracted features are reused, while the split, model, reports, and
 MLflow run are regenerated.
 
-MLflow is available at `http://localhost:5002`. Both trial runners start it
-automatically; to start it without running trials, use:
+For local, non-AWS execution, MLflow is available at
+`http://localhost:5002`. Both local trial runners start it automatically; to
+start it without running trials, use:
 
 ```powershell
   docker compose --profile mlflow up -d --wait mlflow
@@ -472,6 +485,13 @@ Training containers connect to `http://mlflow:5002` on the Compose network.
 The server stores metadata in `/data/all-tmd-work/mlflow.db` and proxies
 artifacts into `/data/all-tmd-work/mlartifacts`, both beneath the configured
 `ALL_TMD_DATA_DIR` host directory.
+
+AWS bundles instead set `mlflow.tracking_uri` to
+`sqlite:////mlflow-data/mlflow.db` and `mlflow.artifact_location` to
+`file:///mlflow-data/mlartifacts`. The training client writes directly to these
+run-specific paths, and the cloud worker uploads them only after the sweep
+finishes. The optional `mlflow.artifact_location` setting is left as `null` for
+the local server-backed workflow.
 
 New runs appear in the stable `ALL-TMD` experiment. Collector downloads do not
 rename or version the experiment. Instead, every run records the

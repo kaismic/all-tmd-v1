@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from contextlib import nullcontext
 from datetime import datetime, timezone
+from pathlib import Path
 import sys
 from types import SimpleNamespace
 
@@ -197,6 +198,121 @@ def test_start_run_disabled_does_not_import_mlflow(config_factory, monkeypatch):
 
     with start_run(config, _dataset_frame(), {}) as run:
         assert run is None
+
+
+def test_start_run_creates_experiment_with_explicit_artifact_location(
+    config_factory,
+    monkeypatch,
+):
+    config = config_factory(
+        mlflow_enabled=True,
+        mlflow_tracking_uri="sqlite:////mlflow-data/mlflow.db",
+        mlflow_artifact_location="file:///mlflow-data/mlartifacts",
+    )
+    frame = _dataset_frame()
+    manifest = {
+        "source_indices": [0, 1],
+        "collector_calibration_indices": [2],
+        "collector_holdout_indices": [3],
+    }
+    recorded = {"inputs": []}
+
+    def fake_start_run(**_kwargs):
+        return nullcontext("active-run")
+
+    fake_mlflow = SimpleNamespace(
+        data=SimpleNamespace(
+            from_pandas=lambda dataset_frame, **kwargs: SimpleNamespace(
+                frame=dataset_frame,
+                **kwargs,
+            )
+        ),
+        set_tracking_uri=lambda uri: recorded.setdefault("tracking_uri", uri),
+        get_experiment_by_name=lambda _name: None,
+        create_experiment=lambda name, artifact_location: recorded.update(
+            experiment_name=name,
+            artifact_location=artifact_location,
+        ) or "42",
+        set_experiment=lambda **kwargs: recorded.setdefault(
+            "experiment_id", kwargs["experiment_id"]
+        ),
+        start_run=fake_start_run,
+        log_params=lambda _params: None,
+        log_input=lambda dataset, context: recorded["inputs"].append(
+            (dataset, context)
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "mlflow", fake_mlflow)
+
+    with start_run(config, frame, manifest):
+        pass
+
+    assert recorded["tracking_uri"] == "sqlite:////mlflow-data/mlflow.db"
+    assert recorded["experiment_name"] == "test"
+    assert recorded["artifact_location"] == "file:///mlflow-data/mlartifacts"
+    assert recorded["experiment_id"] == "42"
+
+
+def test_start_run_rejects_mismatched_artifact_location(
+    config_factory,
+    monkeypatch,
+):
+    config = config_factory(
+        mlflow_enabled=True,
+        mlflow_artifact_location="file:///mlflow-data/mlartifacts",
+    )
+    fake_mlflow = SimpleNamespace(
+        set_tracking_uri=lambda _uri: None,
+        get_experiment_by_name=lambda _name: SimpleNamespace(
+            experiment_id="1",
+            artifact_location="mlflow-artifacts:/1",
+        ),
+    )
+    monkeypatch.setitem(sys.modules, "mlflow", fake_mlflow)
+
+    with pytest.raises(ValueError, match="artifact location"):
+        with start_run(config, _dataset_frame(), {}):
+            pass
+
+
+def test_start_run_records_to_sqlite_without_server(
+    config_factory,
+    tmp_path: Path,
+):
+    mlflow = pytest.importorskip("mlflow")
+
+    database_path = tmp_path / "mlflow" / "mlflow.db"
+    artifacts_path = tmp_path / "mlflow" / "mlartifacts"
+    database_path.parent.mkdir()
+    config = config_factory(
+        mlflow_enabled=True,
+        mlflow_tracking_uri=f"sqlite:///{database_path.as_posix()}",
+        mlflow_artifact_location=artifacts_path.as_uri(),
+    )
+    frame = _dataset_frame()
+    manifest = {
+        "source_indices": [0, 1],
+        "collector_calibration_indices": [2],
+        "collector_holdout_indices": [3],
+    }
+    artifact = tmp_path / "result.txt"
+    artifact.write_text("serverless result\n", encoding="utf-8")
+    previous_tracking_uri = mlflow.get_tracking_uri()
+    try:
+        with start_run(config, frame, manifest):
+            mlflow.log_metric("serverless", 1.0)
+            mlflow.log_artifact(str(artifact))
+
+        client = mlflow.MlflowClient(tracking_uri=config.mlflow.tracking_uri)
+        experiment = client.get_experiment_by_name(config.mlflow.experiment_name)
+        assert experiment is not None
+        runs = client.search_runs([experiment.experiment_id])
+        assert len(runs) == 1
+        assert runs[0].data.metrics["serverless"] == 1.0
+        assert database_path.is_file()
+        assert list(artifacts_path.rglob("result.txt"))
+    finally:
+        mlflow.set_tracking_uri(previous_tracking_uri)
 
 
 def _dataset_frame() -> pd.DataFrame:

@@ -10,6 +10,8 @@ import re
 import shutil
 from typing import Any
 
+import yaml
+
 from all_tmd.trial_generator import generate_trials
 
 
@@ -18,6 +20,8 @@ REQUIRED_CONFIG_FILES = (
     "model.config.yaml",
     "trial-parameters.json",
 )
+AWS_MLFLOW_TRACKING_URI = "sqlite:////mlflow-data/mlflow.db"
+AWS_MLFLOW_ARTIFACT_LOCATION = "file:///mlflow-data/mlartifacts"
 
 
 def create_run_bundle(
@@ -71,8 +75,25 @@ def create_run_bundle(
         trials = [smoke_trial]
 
     destination.mkdir(parents=True, exist_ok=False)
-    for name in REQUIRED_CONFIG_FILES:
-        shutil.copy2(root / name, destination / name)
+    model_config_path = root / "model.config.yaml"
+    model_config = yaml.safe_load(model_config_path.read_text(encoding="utf-8"))
+    if not isinstance(model_config, dict):
+        raise ValueError("model.config.yaml must contain a YAML object")
+    mlflow_config = model_config.get("mlflow")
+    if not isinstance(mlflow_config, dict):
+        raise ValueError("model.config.yaml must contain an mlflow object")
+    mlflow_config["enabled"] = True
+    mlflow_config["tracking_uri"] = AWS_MLFLOW_TRACKING_URI
+    mlflow_config["artifact_location"] = AWS_MLFLOW_ARTIFACT_LOCATION
+
+    (destination / "model.config.yaml").write_text(
+        yaml.safe_dump(model_config, sort_keys=False),
+        encoding="utf-8",
+    )
+    shutil.copy2(
+        root / "trial-parameters.json",
+        destination / "trial-parameters.json",
+    )
     trials_path = destination / "trials.json"
     trials_path.write_text(
         json.dumps(trials, indent=2, ensure_ascii=False) + "\n",
