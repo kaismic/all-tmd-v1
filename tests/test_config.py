@@ -62,6 +62,82 @@ def test_training_fields_do_not_affect_hash_or_cause_collision(config_factory):
     assert saved_trial["training"]["optuna_trials"] == 25
 
 
+def test_scalar_calibration_fraction_applies_to_every_mode(config_factory):
+    config = config_factory(calibration_fraction=0.5)
+
+    assert config.trial.training.calibration_fraction == {
+        "bus": 0.5,
+        "car": 0.5,
+        "train": 0.5,
+    }
+
+
+def test_calibration_fractions_are_configurable_per_mode(config_factory):
+    config = config_factory(
+        calibration_fraction={"bus": 0.8, "car": 0.4, "train": 0.4}
+    )
+
+    assert config.trial.training.calibration_fraction == {
+        "bus": 0.8,
+        "car": 0.4,
+        "train": 0.4,
+    }
+
+
+@pytest.mark.parametrize(
+    ("calibration_fraction", "message"),
+    [
+        ({"bus": 0.5, "car": 0.5}, "missing transport mode.*train"),
+        (
+            {"bus": 0.5, "car": 0.5, "train": 0.5, "tram": 0.5},
+            "unknown transport mode.*tram",
+        ),
+        (
+            {"bus": 0.5, "BUS": 0.5, "car": 0.5, "train": 0.5},
+            "duplicate transport modes",
+        ),
+    ],
+)
+def test_calibration_fraction_modes_must_exactly_match_labels(
+    config_factory,
+    calibration_fraction,
+    message,
+):
+    with pytest.raises(ValueError, match=message):
+        config_factory(calibration_fraction=calibration_fraction)
+
+
+@pytest.mark.parametrize("fraction", [0, 1, -0.1, float("nan"), float("inf")])
+def test_calibration_fractions_must_be_finite_and_between_zero_and_one(
+    config_factory,
+    fraction,
+):
+    with pytest.raises(
+        ValueError,
+        match=(
+            "training.calibration_fraction.bus must be a finite number "
+            "between 0 and 1"
+        ),
+    ):
+        config_factory(
+            calibration_fraction={
+                "bus": fraction,
+                "car": 0.5,
+                "train": 0.5,
+            }
+        )
+
+
+def test_calibration_fraction_must_be_numeric(config_factory):
+    with pytest.raises(
+        ValueError,
+        match="training.calibration_fraction.bus must be a number between 0 and 1",
+    ):
+        config_factory(
+            calibration_fraction={"bus": None, "car": 0.5, "train": 0.5}
+        )
+
+
 def test_minimum_samples_are_calculated_per_sensor(config_factory):
     config = config_factory(
         sensors={"accelerometer": ["mean"], "gyroscope": ["range"]},

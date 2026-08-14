@@ -20,7 +20,7 @@ def config_factory(tmp_path):
         collector_max_sample_interval_ms: int | None = None,
         generic_minimum_sampling_rate: dict[str, float] | None = None,
         generic_maximum_sample_interval_ms: int | None = None,
-        calibration_fraction: float = 0.5,
+        calibration_fraction: float | dict[str, float] = 0.5,
         mlflow_enabled: bool = False,
     ) -> PipelineConfig:
         sensors = sensors or {"accelerometer": ["mean"]}

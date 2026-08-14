@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.model_selection import GroupKFold, StratifiedShuffleSplit
+from sklearn.model_selection import GroupKFold
 
 from all_tmd.config import PipelineConfig
 
@@ -31,30 +32,51 @@ def create_splits(frame: pd.DataFrame, config: PipelineConfig) -> dict[str, Any]
     mixed = group_labels[group_labels.map(len) != 1]
     if not mixed.empty:
         raise ValueError("Each collector group must contain exactly one label")
-    groups = group_labels.index.to_numpy(dtype=str)
-    labels = np.array([values[0] for values in group_labels], dtype=np.int64)
-    class_counts = pd.Series(labels).value_counts()
-    if class_counts.min() < 2:
+    group_classes = group_labels.map(lambda values: values[0])
+    configured_values = set(config.trial.labels.values())
+    unknown_values = sorted(set(group_classes) - configured_values)
+    if unknown_values:
         raise ValueError(
-            "Collector calibration/holdout split requires at least two groups per class"
+            "Collector contains label value(s) not configured by the trial: "
+            + ", ".join(str(value) for value in unknown_values)
         )
 
-    splitter = StratifiedShuffleSplit(
-        n_splits=1,
-        train_size=config.trial.training.calibration_fraction,
-        random_state=config.trial.training.random_seed,
+    calibration_groups: set[str] = set()
+    holdout_groups: set[str] = set()
+    calibration_group_counts: dict[str, int] = {}
+    holdout_group_counts: dict[str, int] = {}
+    rng = np.random.default_rng(config.trial.training.random_seed)
+    ordered_labels = sorted(
+        config.trial.labels.items(),
+        key=lambda item: (item[1], item[0]),
     )
-    try:
-        calibration_group_positions, holdout_group_positions = next(
-            splitter.split(groups, labels)
+    sparse_modes: list[str] = []
+    for mode, label_value in ordered_labels:
+        mode_groups = group_classes.index[
+            group_classes == label_value
+        ].to_numpy(dtype=str)
+        if len(mode_groups) < 2:
+            sparse_modes.append(mode)
+            continue
+        shuffled_groups = rng.permutation(mode_groups)
+        requested_fraction = config.trial.training.calibration_fraction[mode]
+        calibration_count = max(
+            1,
+            min(
+                len(mode_groups) - 1,
+                math.floor(len(mode_groups) * requested_fraction),
+            ),
         )
-    except ValueError as exc:
+        calibration_groups.update(shuffled_groups[:calibration_count].tolist())
+        holdout_groups.update(shuffled_groups[calibration_count:].tolist())
+        calibration_group_counts[mode] = calibration_count
+        holdout_group_counts[mode] = len(mode_groups) - calibration_count
+    if sparse_modes:
         raise ValueError(
-            "Collector calibration_fraction does not leave at least one group "
-            "per class in both calibration and holdout"
-        ) from exc
-    calibration_groups = set(groups[calibration_group_positions])
-    holdout_groups = set(groups[holdout_group_positions])
+            "Collector calibration/holdout split requires at least two groups "
+            "for each configured transport mode; insufficient: "
+            + ", ".join(sparse_modes)
+        )
     calibration_indices = collector.index[
         collector["group_id"].astype(str).isin(calibration_groups)
     ].astype(int).tolist()
@@ -89,13 +111,18 @@ def create_splits(frame: pd.DataFrame, config: PipelineConfig) -> dict[str, Any]
         )
 
     return {
-        "manifest_version": 2,
+        "manifest_version": 3,
         "frame_fingerprint": frame_fingerprint(frame),
         "source_indices": source_indices,
         "collector_calibration_indices": calibration_indices,
         "collector_holdout_indices": holdout_indices,
         "collector_cv_folds": cv_folds,
         "group_column": "group_id",
+        "calibration_fraction_by_label": dict(
+            config.trial.training.calibration_fraction
+        ),
+        "collector_calibration_group_counts_by_label": calibration_group_counts,
+        "collector_holdout_group_counts_by_label": holdout_group_counts,
     }
 
 

@@ -17,7 +17,11 @@
       "random_seed": 42,
       "optuna_trials": 20,
       "model_families": ["random_forest", "xgboost", "mlp"],
-      "calibration_fraction": 0.5
+      "calibration_fraction": {
+        "bus": 0.8,
+        "car": 0.4,
+        "train": 0.4
+      }
     }
   },
   {
@@ -37,7 +41,11 @@
       "random_seed": 42,
       "optuna_trials": 20,
       "model_families": ["random_forest", "xgboost", "mlp"],
-      "calibration_fraction": 0.5
+      "calibration_fraction": {
+        "bus": 0.8,
+        "car": 0.4,
+        "train": 0.4
+      }
     }
   }
 ]

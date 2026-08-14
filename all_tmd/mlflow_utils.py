@@ -59,6 +59,10 @@ def start_run(
             for sensor in config.trial.features.sensors
         },
     }
+    calibration_params = {
+        f"calibration_fraction.{mode}": fraction
+        for mode, fraction in config.trial.training.calibration_fraction.items()
+    }
     run_name = mlflow_run_name(config, collector_count)
     with mlflow.start_run(
         run_name=run_name
@@ -72,6 +76,7 @@ def start_run(
                 "step_seconds": config.trial.features.default_step_seconds,
                 **feature_params,
                 **collector_quality_params,
+                **calibration_params,
                 "model_families": ",".join(config.trial.training.model_families),
                 "optuna_trials": config.trial.training.optuna_trials,
                 "collector_session_digest": collector_digest,

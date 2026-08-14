@@ -63,7 +63,7 @@ class TrialTrainingConfig:
     random_seed: int
     optuna_trials: int
     model_families: tuple[str, ...]
-    calibration_fraction: float
+    calibration_fraction: dict[str, float]
 
 
 @dataclass(frozen=True)
@@ -306,15 +306,16 @@ def _trial_config(raw: dict[str, Any]) -> TrialConfig:
     if unknown_families:
         raise ValueError("Unsupported model family: " + ", ".join(unknown_families))
     optuna_trials = int(training["optuna_trials"])
-    calibration_fraction = float(training["calibration_fraction"])
     if optuna_trials < 1:
         raise ValueError("training.optuna_trials must be at least 1")
-    if not 0 < calibration_fraction < 1:
-        raise ValueError("training.calibration_fraction must be between 0 and 1")
 
     labels = {str(key).lower(): int(value) for key, value in raw["labels"].items()}
     if len(set(labels.values())) != len(labels):
         raise ValueError("Trial label values must be unique")
+    calibration_fraction = _calibration_fractions(
+        training["calibration_fraction"],
+        labels,
+    )
     return TrialConfig(
         train_dataset=str(raw["train_dataset"]).lower(),
         labels=labels,
@@ -347,3 +348,47 @@ def _optional_positive_int(value: Any, field: str) -> int | None:
     if parsed <= 0:
         raise ValueError(f"{field} must be greater than zero or null")
     return parsed
+
+
+def _calibration_fractions(
+    value: Any,
+    labels: dict[str, int],
+) -> dict[str, float]:
+    field = "training.calibration_fraction"
+    if isinstance(value, dict):
+        normalized_keys = [str(key).lower() for key in value]
+        if len(normalized_keys) != len(set(normalized_keys)):
+            raise ValueError(f"{field} contains duplicate transport modes")
+        normalized = {
+            str(key).lower(): fraction
+            for key, fraction in value.items()
+        }
+        missing = sorted(set(labels) - set(normalized))
+        unknown = sorted(set(normalized) - set(labels))
+        if missing:
+            raise ValueError(
+                f"{field} is missing transport mode(s): " + ", ".join(missing)
+            )
+        if unknown:
+            raise ValueError(
+                f"{field} contains unknown transport mode(s): "
+                + ", ".join(unknown)
+            )
+        raw_fractions = normalized
+    else:
+        raw_fractions = {label: value for label in labels}
+
+    fractions: dict[str, float] = {}
+    for label in labels:
+        try:
+            fraction = float(raw_fractions[label])
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"{field}.{label} must be a number between 0 and 1"
+            ) from exc
+        if not math.isfinite(fraction) or not 0 < fraction < 1:
+            raise ValueError(
+                f"{field}.{label} must be a finite number between 0 and 1"
+            )
+        fractions[label] = fraction
+    return fractions

@@ -171,6 +171,9 @@ def test_start_run_logs_dataset_inputs_and_collector_summary(
         == 30
     )
     assert recorded["params"]["collector_minimum_sampling_rate.pressure"] == 2
+    assert recorded["params"]["calibration_fraction.bus"] == 0.5
+    assert recorded["params"]["calibration_fraction.car"] == 0.5
+    assert recorded["params"]["calibration_fraction.train"] == 0.5
     assert [context for _, context in recorded["inputs"]] == [
         "training",
         "calibration",

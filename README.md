@@ -426,16 +426,40 @@ collector minimum-count filtering.
 Feature columns use vector magnitude for accelerometer, gyroscope, and
 magnetometer, and the scalar pressure value for pressure.
 
-Collector groups are stratified into calibration and holdout sets according to
-`training.calibration_fraction`. Optuna folds train on all source rows plus the
-non-validation collector calibration groups. The final model trains on all
-source rows plus all collector calibration rows; only collector holdout groups
-are used for final reported evaluation.
+Collector groups are split into calibration and holdout sets independently for
+each configured transport mode. `training.calibration_fraction` can be either a
+single fraction applied to every mode or an object with exactly one fraction
+for every key in `labels`:
+
+```json
+"calibration_fraction": {
+  "bus": 0.8,
+  "car": 0.4,
+  "train": 0.4
+}
+```
+
+Fractions apply to whole collector groups, not individual feature rows. For
+each mode, the calibration group count is the floor of the group count times
+its fraction. The result is clamped to leave at least one group in both
+calibration and holdout, so every configured mode requires at least two
+collector groups. The split is deterministic for the trial's `random_seed`.
+
+Optuna folds train on all source rows plus the non-validation collector
+calibration groups. The final model trains on all source rows plus all collector
+calibration rows; only collector holdout groups are used for final reported
+evaluation. The effective per-mode fractions and group counts are recorded in
+the split manifest and the fractions are logged as MLflow parameters.
 
 When a class has only two collector groups, one group remains in calibration
 and one remains in holdout. Grouped cross-validation still evaluates every
 calibration group exactly once, and Optuna is scored from the combined
 out-of-fold predictions rather than requiring every class in every fold.
+
+Because calibration fractions are under the trial's top-level `training`
+field, changing them does not change the configuration hash. Existing ingested
+events and extracted features are reused, while the split, model, reports, and
+MLflow run are regenerated.
 
 MLflow is available at `http://localhost:5002`. Both trial runners start it
 automatically; to start it without running trials, use:
