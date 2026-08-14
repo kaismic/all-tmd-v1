@@ -42,9 +42,9 @@
         "mlp"
       ],
       "calibration_fraction": {
-        "bus": 0.8,
-        "car": 0.4,
-        "train": 0.4
+        "bus": 0.5,
+        "car": 0.5,
+        "train": 0.5
       }
     }
   },
