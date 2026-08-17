@@ -77,6 +77,24 @@ session windowing, including a periodic heartbeat for long sessions.
 For each trial, the models should be trained by utilising both the dataset specified by `train_dataset` field in the `trials.json` objects and the collector dataset, just like `adapt` phase in `us-tmd-v2`.
 The models should be tested/evaluated with the collector dataset.
 
+For unseen-user evaluation, trials may select nested participant cross-validation.
+Each participant is excluded from training and hyperparameter selection for its
+outer predictions; a final participant-grouped study and all-data fit produce the
+deployment artifact. Reports retain pooled outer predictions under
+`collector_holdout`, add participant and session-level results, and can include
+participant-clustered confidence intervals.
+
+Training supports hierarchical domain/class/participant/session/window weights
+and a deterministic training-only whole-session duration-balancing ablation.
+The holdout is never duration-balanced. Estimator class weights must not be
+combined with pipeline sample weights. Optuna can target macro F1 or minimum
+class recall.
+
+Feature extraction supports multiple trailing contexts inside one outer window,
+plus jerk, frequency-domain, mean-absolute-deviation, and inter-axis-correlation
+features. Feature policy schema changes force safe rebuilds of affected feature
+datasets.
+
 ### Reports
 Here is an example directory structure
 ```

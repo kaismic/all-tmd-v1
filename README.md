@@ -195,8 +195,9 @@ python .\scripts\show-best-trial.py `
   <run-id>
 ```
 
-The other accepted selectors are `collector_holdout.accuracy` and
-`collector_holdout.macro_f1`. The script reads canonical trial reports beneath
+The other accepted selectors are `collector_holdout.accuracy`,
+`collector_holdout.macro_f1`, and
+`collector_holdout.minimum_class_recall`. The script reads canonical trial reports beneath
 `aws-results/<run-id>/work` and excludes duplicate MLflow artifact copies.
 
 Compare the collector-holdout confusion matrices across all downloaded trial
@@ -438,6 +439,23 @@ collector minimum-count filtering.
 Feature columns use vector magnitude for accelerometer, gyroscope, and
 magnetometer, and the scalar pressure value for pressure.
 
+Time-domain aggregations include minimum, maximum, mean, range, variance,
+standard deviation, kurtosis, interquartile range, mean absolute deviation, and
+the existing delta features. Optional motion and frequency aggregations are
+`mean_absolute_jerk`, `jerk_standard_deviation`, `spectral_energy`,
+`dominant_frequency_hz`, `spectral_entropy`, and `mean_axis_correlation`.
+Frequency features linearly resample each irregular sensor series at its median
+positive interval, remove its mean, and calculate the real-valued spectrum.
+
+Set `features.context_windows_seconds` to extract the configured sensor features
+over multiple trailing contexts in every outer window. The list must contain
+unique positive whole seconds, cannot exceed `default_window_seconds`, and must
+include that default. A 60-second outer window with `[10, 30, 60]` produces
+columns such as `accelerometer#spectral_energy@10s` and
+`accelerometer#spectral_energy@60s`. Omitting the field preserves the original
+unsuffixed single-context column names. Collector sampling and continuity
+requirements are checked independently for every context.
+
 Collector groups are split into calibration and holdout sets independently for
 each configured transport mode. `training.calibration_fraction` can be either a
 single fraction applied to every mode or an object with exactly one fraction
@@ -472,6 +490,62 @@ Because calibration fractions are under the trial's top-level `training`
 field, changing them does not change the configuration hash. Existing ingested
 events and extracted features are reused, while the split, model, reports, and
 MLflow run are regenerated.
+
+### Participant-independent evaluation and balancing
+
+The legacy default `training.evaluation_strategy` is `session_holdout`, with the
+session-group behavior described above. Set it to `participant_nested_cv` when
+the model must generalize to people and devices absent from training. Every
+collector participant becomes one outer evaluation fold. Optuna tuning for that
+fold sees only the other participants, using stratified participant-grouped
+inner folds. The pooled outer predictions are stored under the established
+`collector_holdout` metrics key so the comparison scripts remain compatible.
+After unbiased evaluation, a separate final study tunes on participant-grouped
+folds and the deployable model trains on all collector rows plus the immutable
+source dataset.
+
+Nested evaluation performs one Optuna study per participant plus a final study,
+so it is substantially more expensive than the session holdout. Use a small
+`optuna_trials` value for smoke and ablation runs before a final model search.
+`training.participant_inner_folds` defaults to five and is capped at the number
+of available training participants. Every configured mode must occur for at
+least two collector participants, and at least three participants are required
+overall.
+
+Set `training.weighting_strategy` to `hierarchical` to prevent long recordings
+from dominating. Within each domain and class, total weight is divided equally
+between participants, then sessions, then windows. `collector_domain_weight`
+controls the collector domain's total contribution relative to the immutable
+source domain; it defaults to `2.0`. The alternative `class_balanced` strategy
+retains inverse-frequency row weights. Random forest estimator-level
+`class_weight` is disabled because it would multiply the pipeline's sample
+weights and apply the correction twice.
+
+`training.duration_balancing` accepts `none` or `smallest_mode`. The latter is
+an ablation, not an evaluation filter: for every training fold it keeps all
+source rows but selects whole collector sessions until each mode approximates
+the smallest available mode duration. Selection cycles deterministically across
+participants before taking another session from the same participant. Outer
+evaluation rows are never removed, and the split report records the target,
+selected session counts, and selected usable durations.
+
+Optuna can optimize `training.selection_metric` as either `macro_f1` (the
+default) or `minimum_class_recall`. The latter directly targets the weakest
+mode. Every evaluation now also reports participant and phone-position
+breakdowns, mean-probability session-level predictions, and
+`minimum_class_recall`. Set `training.bootstrap_iterations` above zero to add
+deterministic 95% intervals that resample whole participants rather than
+correlated windows.
+
+The local `recommended-trial-plans/` directory is gitignored and contains the
+generated staged experiments for the current collector snapshot. Generate any
+plan independently without replacing the canonical parameter file:
+
+```powershell
+python .\scripts\generate-trials.py `
+  --parameters .\recommended-trial-plans\02-weighting-ablation.trial-parameters.json `
+  --output .\recommended-trial-plans\02-weighting-ablation.trials.json
+```
 
 For local, non-AWS execution, MLflow is available at
 `http://localhost:5002`. Both local trial runners start it automatically; to

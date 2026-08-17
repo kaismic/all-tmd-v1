@@ -38,6 +38,7 @@ def _write_metrics(
             "balanced_accuracy": balanced_accuracy,
             "accuracy": accuracy,
             "macro_f1": macro_f1,
+            "minimum_class_recall": min(recalls.values()),
             "classification_report": {
                 **{
                     mode: {"recall": recall, "support": 10}
@@ -141,3 +142,31 @@ def test_find_best_trial_ignores_mlflow_artifact_copies(tmp_path):
     )
 
     assert result.trial_hash == "a" * 64
+
+
+def test_find_best_trial_accepts_minimum_class_recall(tmp_path):
+    _write_metrics(
+        tmp_path,
+        run_id="selected-run",
+        trial_hash="a" * 64,
+        balanced_accuracy=0.8,
+        accuracy=0.8,
+        macro_f1=0.8,
+        recalls={"bus": 0.7, "car": 0.9, "train": 0.9},
+    )
+    _write_metrics(
+        tmp_path,
+        run_id="selected-run",
+        trial_hash="b" * 64,
+        balanced_accuracy=0.8,
+        accuracy=0.8,
+        macro_f1=0.8,
+        recalls={"bus": 0.8, "car": 0.8, "train": 0.8},
+    )
+
+    result = MODULE.find_best_trial(
+        tmp_path / "selected-run",
+        "collector_holdout.minimum_class_recall",
+    )
+
+    assert result.trial_hash == "b" * 64

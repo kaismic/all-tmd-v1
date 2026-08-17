@@ -15,6 +15,7 @@ SELECTOR_METRICS = (
     "collector_holdout.balanced_accuracy",
     "collector_holdout.accuracy",
     "collector_holdout.macro_f1",
+    "collector_holdout.minimum_class_recall",
 )
 SUMMARY_REPORT_KEYS = {"accuracy", "macro avg", "weighted avg"}
 

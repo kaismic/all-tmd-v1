@@ -6,6 +6,7 @@
     "features": {
       "default_window_seconds": 10,
       "default_step_seconds": 5,
+      "context_windows_seconds": [10],
       "sensors": {
         "accelerometer": ["mean", "standard_deviation", "range", "minimum"],
         "gyroscope": ["mean", "standard_deviation", "range", "minimum"],
@@ -21,7 +22,14 @@
         "bus": 0.8,
         "car": 0.4,
         "train": 0.4
-      }
+      },
+      "evaluation_strategy": "participant_nested_cv",
+      "participant_inner_folds": 5,
+      "weighting_strategy": "hierarchical",
+      "collector_domain_weight": 1.0,
+      "duration_balancing": "none",
+      "selection_metric": "macro_f1",
+      "bootstrap_iterations": 1000
     }
   },
   {
@@ -30,6 +38,7 @@
     "features": {
       "default_window_seconds": 10,
       "default_step_seconds": 5,
+      "context_windows_seconds": [10],
       "sensors": {
         "accelerometer": ["mean", "standard_deviation", "range", "minimum"],
         "gyroscope": ["mean", "standard_deviation", "range", "minimum"],
@@ -45,7 +54,14 @@
         "bus": 0.8,
         "car": 0.4,
         "train": 0.4
-      }
+      },
+      "evaluation_strategy": "participant_nested_cv",
+      "participant_inner_folds": 5,
+      "weighting_strategy": "hierarchical",
+      "collector_domain_weight": 1.0,
+      "duration_balancing": "none",
+      "selection_metric": "macro_f1",
+      "bootstrap_iterations": 1000
     }
   }
 ]
