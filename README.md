@@ -498,7 +498,7 @@ new split, model, reports, and MLflow run their own identity.
 
 The legacy default `training.evaluation_strategy` is `session_holdout`, with the
 session-group behavior described above. Set it to `participant_nested_cv` when
-the model must generalize to people and devices absent from training. Every
+the model must generalize to people absent from training. Every
 collector participant becomes one outer evaluation fold. Optuna tuning for that
 fold sees only the other participants, using stratified participant-grouped
 inner folds. The pooled outer predictions are stored under the established
