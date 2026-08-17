@@ -248,6 +248,38 @@ def test_corrupt_feature_policy_rebuilds_affected_source(config_factory):
     assert not sentinel.exists()
 
 
+def test_multiscale_frequency_and_jerk_features(config_factory):
+    config = config_factory(
+        sensors={
+            "pressure": [
+                "mean_absolute_jerk",
+                "spectral_energy",
+                "dominant_frequency_hz",
+                "spectral_entropy",
+            ]
+        },
+        collector_minimum_sampling_rate={"pressure": 5},
+        window_seconds=4,
+        step_seconds=4,
+        context_windows_seconds=[2, 4],
+    )
+    timestamps = list(range(0, 4100, 100))
+    events = _events("us-tmd", "frequency", timestamps)
+    seconds = np.asarray(timestamps, dtype=np.float64) / 1000.0
+    events["p"] = 1000.0 + np.sin(2 * np.pi * seconds)
+
+    features = feature_frame(events, config, "us-tmd")
+
+    assert len(features) == 1
+    assert features.loc[0, "pressure#mean_absolute_jerk@2s"] > 0
+    assert features.loc[0, "pressure#spectral_energy@2s"] > 0
+    assert features.loc[0, "pressure#dominant_frequency_hz@2s"] == pytest.approx(
+        1.0,
+        abs=0.1,
+    )
+    assert 0 <= features.loc[0, "pressure#spectral_entropy@4s"] <= 1
+
+
 def _events(domain: str, session_id: str, timestamps: list[int]) -> pd.DataFrame:
     rows = []
     for index, timestamp in enumerate(timestamps):

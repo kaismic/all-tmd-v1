@@ -30,7 +30,7 @@ METADATA_COLUMNS = [
 FEATURE_BUCKETS = 64
 FEATURE_CHECKPOINT = "checkpoint.json"
 FEATURE_POLICY = "feature-policy.json"
-FEATURE_POLICY_SCHEMA_VERSION = 2
+FEATURE_POLICY_SCHEMA_VERSION = 3
 FEATURE_SESSION_HEARTBEAT_SECONDS = 10.0
 
 
@@ -179,15 +179,23 @@ def feature_frame(
             + ", ".join(sorted(domains))
         )
     feature_config = config.trial.features
+    context_seconds = feature_config.context_windows_seconds
     if source_name == "collector":
-        minimum_samples = config.trial.minimum_samples(
-            config.collector_minimum_sampling_rate
-        )
+        minimum_samples_by_context = {
+            context: config.trial.minimum_samples_for_window(
+                config.collector_minimum_sampling_rate,
+                context,
+            )
+            for context in context_seconds
+        }
         maximum_sample_interval_ms = (
             config.dataset.collector_max_sample_interval_ms
         )
     else:
-        minimum_samples = {sensor: 1 for sensor in feature_config.sensors}
+        minimum_samples_by_context = {
+            context: {sensor: 1 for sensor in feature_config.sensors}
+            for context in context_seconds
+        }
         maximum_sample_interval_ms = None
     window_ms = feature_config.default_window_seconds * 1000
     step_ms = feature_config.default_step_seconds * 1000
@@ -238,12 +246,17 @@ def feature_frame(
                 (session["timestamp_ms"] >= cursor)
                 & (session["timestamp_ms"] < cursor + window_ms)
             ]
-            if _meets_window_quality_requirements(
-                window,
-                minimum_samples,
-                maximum_sample_interval_ms,
-                cursor,
-                cursor + window_ms,
+            if all(
+                _meets_window_quality_requirements(
+                    window.loc[
+                        window["timestamp_ms"] >= cursor + window_ms - context * 1000
+                    ],
+                    minimum_samples_by_context[context],
+                    maximum_sample_interval_ms,
+                    cursor + window_ms - context * 1000,
+                    cursor + window_ms,
+                )
+                for context in context_seconds
             ):
                 rows.append(
                     _window_features(
@@ -308,15 +321,28 @@ def _window_features(
     row["label"] = int(first["label"])
     row["window_start_ms"] = int(window_start_ms)
     row["window_end_ms"] = int(window_end_ms)
-    for sensor, aggregations in config.trial.features.sensors.items():
-        values = ordered_sensor_features(
-            sensor,
-            window,
-            aggregations,
-            session_baseline=baselines.get(sensor),
-        )
-        for aggregation, value in zip(aggregations, values):
-            row[f"{sensor}#{aggregation}"] = np.float32(value)
+    contexts = config.trial.features.context_windows_seconds
+    single_default_context = contexts == (
+        config.trial.features.default_window_seconds,
+    )
+    for context in contexts:
+        context_rows = window.loc[
+            window["timestamp_ms"] >= window_end_ms - context * 1000
+        ]
+        for sensor, aggregations in config.trial.features.sensors.items():
+            values = ordered_sensor_features(
+                sensor,
+                context_rows,
+                aggregations,
+                session_baseline=baselines.get(sensor),
+            )
+            for aggregation, value in zip(aggregations, values):
+                name = (
+                    f"{sensor}#{aggregation}"
+                    if single_default_context
+                    else f"{sensor}#{aggregation}@{context}s"
+                )
+                row[name] = np.float32(value)
     return row
 
 

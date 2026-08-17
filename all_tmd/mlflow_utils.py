@@ -41,6 +41,9 @@ def start_run(
     feature_params = {
         "sensors": ",".join(config.trial.features.sensors),
         "feature_names": ",".join(config.trial.feature_names),
+        "context_windows_seconds": ",".join(
+            str(value) for value in config.trial.features.context_windows_seconds
+        ),
         **{
             f"features.{sensor}": ",".join(aggregations)
             for sensor, aggregations in config.trial.features.sensors.items()
@@ -79,6 +82,16 @@ def start_run(
                 **calibration_params,
                 "model_families": ",".join(config.trial.training.model_families),
                 "optuna_trials": config.trial.training.optuna_trials,
+                "evaluation_strategy": config.trial.training.evaluation_strategy,
+                "weighting_strategy": config.trial.training.weighting_strategy,
+                "collector_domain_weight": (
+                    config.trial.training.collector_domain_weight
+                ),
+                "duration_balancing": config.trial.training.duration_balancing,
+                "selection_metric": config.trial.training.selection_metric,
+                "participant_inner_folds": (
+                    config.trial.training.participant_inner_folds
+                ),
                 "collector_session_digest": collector_digest,
                 "collector_session_count": collector_count,
             }
@@ -180,26 +193,45 @@ def log_dataset_inputs(
 
     run_dir = config.run_dir()
     feature_names = config.trial.feature_names
-    datasets = (
-        (
-            f"{config.trial.train_dataset}-training-features",
-            "training",
-            split_manifest["source_indices"],
-            run_dir / "features" / config.trial.train_dataset,
-        ),
-        (
-            "collector-calibration-features",
-            "calibration",
-            split_manifest["collector_calibration_indices"],
-            run_dir / "features" / "collector",
-        ),
-        (
-            "collector-holdout-features",
-            "evaluation",
-            split_manifest["collector_holdout_indices"],
-            run_dir / "features" / "collector",
-        ),
+    source_dataset = (
+        f"{config.trial.train_dataset}-training-features",
+        "training",
+        split_manifest["source_indices"],
+        run_dir / "features" / config.trial.train_dataset,
     )
+    if split_manifest.get("evaluation_strategy") == "participant_nested_cv":
+        collector_indices = split_manifest["collector_evaluation_indices"]
+        datasets = (
+            source_dataset,
+            (
+                "collector-deployment-training-features",
+                "calibration",
+                collector_indices,
+                run_dir / "features" / "collector",
+            ),
+            (
+                "collector-participant-oof-evaluation-features",
+                "evaluation",
+                collector_indices,
+                run_dir / "features" / "collector",
+            ),
+        )
+    else:
+        datasets = (
+            source_dataset,
+            (
+                "collector-calibration-features",
+                "calibration",
+                split_manifest["collector_calibration_indices"],
+                run_dir / "features" / "collector",
+            ),
+            (
+                "collector-holdout-features",
+                "evaluation",
+                split_manifest["collector_holdout_indices"],
+                run_dir / "features" / "collector",
+            ),
+        )
     columns = list(DATASET_ID_COLUMNS) + feature_names
     for name, context, indices, source in datasets:
         dataset_frame = frame.loc[indices, columns].reset_index(drop=True)

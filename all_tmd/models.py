@@ -34,9 +34,6 @@ def suggest_model_params(
             "max_features": trial.suggest_categorical(
                 f"{prefix}max_features", ["sqrt", "log2", 0.5, 0.8]
             ),
-            "class_weight": trial.suggest_categorical(
-                f"{prefix}class_weight", [None, "balanced", "balanced_subsample"]
-            ),
         }
     elif family == "xgboost":
         params = {
@@ -101,7 +98,9 @@ def model_from_params(
             min_samples_split=int(params.get("min_samples_split", 2)),
             min_samples_leaf=int(params.get("min_samples_leaf", 1)),
             max_features=params.get("max_features", "sqrt"),
-            class_weight=params.get("class_weight", "balanced_subsample"),
+            # The training pipeline supplies one authoritative sample-weight
+            # vector. Estimator class weights would multiply it and over-correct.
+            class_weight=None,
             random_state=random_seed,
             n_jobs=n_jobs,
         )

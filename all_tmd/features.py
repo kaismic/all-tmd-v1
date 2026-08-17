@@ -20,6 +20,10 @@ AGGREGATION_ALIASES = {
     "std": "standard_deviation",
     "standard deviation": "standard_deviation",
     "var": "variance",
+    "dominant frequency": "dominant_frequency_hz",
+    "mean absolute jerk": "mean_absolute_jerk",
+    "spectral entropy": "spectral_entropy",
+    "spectral energy": "spectral_energy",
 }
 SUPPORTED_AGGREGATIONS = {
     "minimum",
@@ -32,6 +36,13 @@ SUPPORTED_AGGREGATIONS = {
     "interquartile_range",
     "delta_from_window_start",
     "delta_from_session_baseline",
+    "mean_absolute_deviation",
+    "mean_absolute_jerk",
+    "jerk_standard_deviation",
+    "spectral_energy",
+    "dominant_frequency_hz",
+    "spectral_entropy",
+    "mean_axis_correlation",
 }
 
 
@@ -68,6 +79,7 @@ def aggregate(values: np.ndarray, session_baseline: float | None = None) -> dict
         "interquartile_range": float(q3 - q1),
         "delta_from_window_start": float(values[-1] - values[0]),
         "delta_from_session_baseline": float(np.mean(values) - baseline),
+        "mean_absolute_deviation": float(np.mean(np.abs(values - np.mean(values)))),
     }
 
 
@@ -87,5 +99,92 @@ def ordered_sensor_features(
     aggregations: Sequence[str],
     session_baseline: float | None = None,
 ) -> list[float]:
-    stats = aggregate(sensor_series(sensor, rows), session_baseline=session_baseline)
+    timestamps, values = sensor_samples(sensor, rows)
+    stats = aggregate(values, session_baseline=session_baseline)
+    stats.update(_temporal_features(timestamps, values))
+    stats["mean_axis_correlation"] = _mean_axis_correlation(sensor, rows)
     return [stats[name] for name in aggregations]
+
+
+def sensor_samples(sensor: str, rows) -> tuple[np.ndarray, np.ndarray]:
+    if sensor == "pressure":
+        valid = np.isfinite(rows["p"].to_numpy(dtype=np.float64))
+        values = rows.loc[valid, "p"].to_numpy(dtype=np.float64)
+    else:
+        columns = VECTOR_SENSOR_COLUMNS[sensor]
+        vectors = rows.loc[:, columns].to_numpy(dtype=np.float64)
+        valid = np.isfinite(vectors).all(axis=1)
+        values = np.linalg.norm(vectors[valid], axis=1)
+    timestamps = rows.loc[valid, "timestamp_ms"].to_numpy(dtype=np.float64)
+    if not timestamps.size:
+        return timestamps, values
+    order = np.argsort(timestamps, kind="stable")
+    timestamps = timestamps[order]
+    values = values[order]
+    unique = np.concatenate(([True], np.diff(timestamps) > 0))
+    return timestamps[unique], values[unique]
+
+
+def _temporal_features(
+    timestamps_ms: np.ndarray,
+    values: np.ndarray,
+) -> dict[str, float]:
+    zero = {
+        "mean_absolute_jerk": 0.0,
+        "jerk_standard_deviation": 0.0,
+        "spectral_energy": 0.0,
+        "dominant_frequency_hz": 0.0,
+        "spectral_entropy": 0.0,
+    }
+    if len(values) < 2:
+        return zero
+    seconds = timestamps_ms / 1000.0
+    intervals = np.diff(seconds)
+    positive = intervals > 0
+    if not positive.any():
+        return zero
+    jerk = np.diff(values)[positive] / intervals[positive]
+    result = {
+        **zero,
+        "mean_absolute_jerk": float(np.mean(np.abs(jerk))),
+        "jerk_standard_deviation": float(np.std(jerk, ddof=0)),
+    }
+    if len(values) < 4:
+        return result
+    interval = float(np.median(intervals[positive]))
+    if not np.isfinite(interval) or interval <= 0:
+        return result
+    uniform_seconds = np.arange(seconds[0], seconds[-1] + interval / 2, interval)
+    if len(uniform_seconds) < 4:
+        return result
+    uniform_values = np.interp(uniform_seconds, seconds, values)
+    dynamic = uniform_values - np.mean(uniform_values)
+    spectrum = np.fft.rfft(dynamic)
+    power = np.square(np.abs(spectrum)) / (len(dynamic) ** 2)
+    frequencies = np.fft.rfftfreq(len(dynamic), d=interval)
+    if power.size:
+        power[0] = 0.0
+    total_power = float(power.sum())
+    result["spectral_energy"] = total_power
+    if total_power > 0 and len(power) > 1:
+        dominant = int(np.argmax(power[1:]) + 1)
+        result["dominant_frequency_hz"] = float(frequencies[dominant])
+        probabilities = power[1:] / total_power
+        positive_probabilities = probabilities[probabilities > 0]
+        entropy = -float(np.sum(positive_probabilities * np.log(positive_probabilities)))
+        normalizer = np.log(len(probabilities)) if len(probabilities) > 1 else 1.0
+        result["spectral_entropy"] = entropy / normalizer
+    return result
+
+
+def _mean_axis_correlation(sensor: str, rows) -> float:
+    if sensor == "pressure":
+        return 0.0
+    values = rows.loc[:, VECTOR_SENSOR_COLUMNS[sensor]].to_numpy(dtype=np.float64)
+    values = values[np.isfinite(values).all(axis=1)]
+    if len(values) < 2:
+        return 0.0
+    correlations = np.corrcoef(values, rowvar=False)
+    pairs = np.abs(correlations[np.triu_indices(3, k=1)])
+    pairs = pairs[np.isfinite(pairs)]
+    return float(np.mean(pairs)) if pairs.size else 0.0

@@ -96,6 +96,67 @@ def test_training_writes_required_reports(config_factory, monkeypatch):
     )
 
 
+def test_nested_participant_training_reports_unseen_participant_and_session_metrics(
+    config_factory,
+):
+    config = config_factory(
+        evaluation_strategy="participant_nested_cv",
+        weighting_strategy="hierarchical",
+        participant_inner_folds=2,
+        bootstrap_iterations=10,
+        selection_metric="minimum_class_recall",
+    )
+    run_dir = config.run_dir()
+    source_dir = run_dir / "features" / "us-tmd"
+    collector_dir = run_dir / "features" / "collector"
+    source_dir.mkdir(parents=True)
+    collector_dir.mkdir(parents=True)
+
+    source_rows = [
+        _feature_row(
+            "us-tmd",
+            f"source-{label}-{index}",
+            label,
+            label + index / 100,
+        )
+        for label in range(3)
+        for index in range(3)
+    ]
+    collector_rows = []
+    for participant_number in range(3):
+        participant = f"participant-{participant_number}"
+        for label in range(3):
+            row = _feature_row(
+                "collector",
+                f"{participant}-session-{label}",
+                label,
+                label + participant_number / 100,
+            )
+            row["participant_id"] = participant
+            row["group_id"] = f"{participant}#{row['session_id']}"
+            collector_rows.append(row)
+    pd.DataFrame(source_rows).to_parquet(
+        source_dir / "part-000000.parquet",
+        index=False,
+    )
+    pd.DataFrame(collector_rows).to_parquet(
+        collector_dir / "part-000000.parquet",
+        index=False,
+    )
+
+    metrics = train(config)
+
+    assert metrics["evaluation_strategy"] == "participant_nested_cv"
+    assert metrics["cross_validation"]["method"] == "nested_participant_out_of_fold"
+    assert len(metrics["participant_outer_folds"]) == 3
+    assert metrics["collector_holdout"]["rows"] == 9
+    assert metrics["collector_holdout"]["participants"] == 3
+    assert metrics["collector_holdout"]["session_level"]["rows"] == 9
+    assert "participant_cluster_95_ci" in metrics["collector_holdout"]
+    report_dir = run_dir / "reports" / "us-tmd"
+    assert (report_dir / "nested-optuna-trials.csv").exists()
+
+
 def _feature_row(
     domain: str,
     group_id: str,

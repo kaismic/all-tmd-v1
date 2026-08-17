@@ -14,6 +14,10 @@ from all_tmd.features import normalize_aggregation_name
 
 SUPPORTED_SENSORS = ("accelerometer", "gyroscope", "magnetometer", "pressure")
 SUPPORTED_MODELS = ("random_forest", "xgboost", "mlp")
+SUPPORTED_EVALUATION_STRATEGIES = ("session_holdout", "participant_nested_cv")
+SUPPORTED_WEIGHTING_STRATEGIES = ("class_balanced", "hierarchical")
+SUPPORTED_DURATION_BALANCING = ("none", "smallest_mode")
+SUPPORTED_SELECTION_METRICS = ("macro_f1", "minimum_class_recall")
 
 
 @dataclass(frozen=True)
@@ -56,6 +60,7 @@ class MlflowConfig:
 class FeatureConfig:
     default_window_seconds: int
     default_step_seconds: int
+    context_windows_seconds: tuple[int, ...]
     sensors: dict[str, tuple[str, ...]]
 
 
@@ -65,6 +70,13 @@ class TrialTrainingConfig:
     optuna_trials: int
     model_families: tuple[str, ...]
     calibration_fraction: dict[str, float]
+    evaluation_strategy: str
+    weighting_strategy: str
+    collector_domain_weight: float
+    duration_balancing: str
+    participant_inner_folds: int
+    bootstrap_iterations: int
+    selection_metric: str
 
 
 @dataclass(frozen=True)
@@ -93,18 +105,36 @@ class TrialConfig:
 
     @property
     def feature_names(self) -> list[str]:
+        single_default_context = self.features.context_windows_seconds == (
+            self.features.default_window_seconds,
+        )
         return [
-            f"{sensor}#{aggregation}"
+            (
+                f"{sensor}#{aggregation}"
+                if single_default_context
+                else f"{sensor}#{aggregation}@{context_seconds}s"
+            )
+            for context_seconds in self.features.context_windows_seconds
             for sensor, aggregations in self.features.sensors.items()
             for aggregation in aggregations
         ]
 
     def minimum_samples(self, sampling_rates: dict[str, float]) -> dict[str, int]:
+        return self.minimum_samples_for_window(
+            sampling_rates,
+            self.features.default_window_seconds,
+        )
+
+    def minimum_samples_for_window(
+        self,
+        sampling_rates: dict[str, float],
+        window_seconds: int,
+    ) -> dict[str, int]:
         return {
             sensor: max(
                 1,
                 math.ceil(
-                    self.features.default_window_seconds * sampling_rates[sensor]
+                    window_seconds * sampling_rates[sensor]
                 ),
             )
             for sensor in self.features.sensors
@@ -290,6 +320,31 @@ def _trial_config(raw: dict[str, Any]) -> TrialConfig:
         raise ValueError("Trial is missing field(s): " + ", ".join(missing))
 
     features = raw["features"]
+    default_window_seconds = int(features["default_window_seconds"])
+    default_step_seconds = int(features["default_step_seconds"])
+    if default_window_seconds <= 0 or default_step_seconds <= 0:
+        raise ValueError("Feature window and step seconds must be greater than zero")
+    raw_contexts = features.get(
+        "context_windows_seconds",
+        [default_window_seconds],
+    )
+    if not isinstance(raw_contexts, list) or not raw_contexts:
+        raise ValueError("features.context_windows_seconds must be a non-empty array")
+    context_windows_seconds = tuple(int(value) for value in raw_contexts)
+    if (
+        any(value <= 0 or value > default_window_seconds for value in context_windows_seconds)
+        or len(set(context_windows_seconds)) != len(context_windows_seconds)
+    ):
+        raise ValueError(
+            "features.context_windows_seconds must contain unique positive values "
+            "no greater than features.default_window_seconds"
+        )
+    context_windows_seconds = tuple(sorted(context_windows_seconds))
+    if default_window_seconds not in context_windows_seconds:
+        raise ValueError(
+            "features.context_windows_seconds must include "
+            "features.default_window_seconds"
+        )
     sensors: dict[str, tuple[str, ...]] = {}
     for sensor, aggregations in features["sensors"].items():
         sensor_name = str(sensor).lower()
@@ -315,15 +370,53 @@ def _trial_config(raw: dict[str, Any]) -> TrialConfig:
     if len(set(labels.values())) != len(labels):
         raise ValueError("Trial label values must be unique")
     calibration_fraction = _calibration_fractions(
-        training["calibration_fraction"],
+        training.get("calibration_fraction", 0.5),
         labels,
     )
+    evaluation_strategy = str(
+        training.get("evaluation_strategy", "session_holdout")
+    ).lower()
+    if evaluation_strategy not in SUPPORTED_EVALUATION_STRATEGIES:
+        raise ValueError(
+            "Unsupported training.evaluation_strategy: " + evaluation_strategy
+        )
+    weighting_strategy = str(
+        training.get("weighting_strategy", "class_balanced")
+    ).lower()
+    if weighting_strategy not in SUPPORTED_WEIGHTING_STRATEGIES:
+        raise ValueError(
+            "Unsupported training.weighting_strategy: " + weighting_strategy
+        )
+    duration_balancing = str(
+        training.get("duration_balancing", "none")
+    ).lower()
+    if duration_balancing not in SUPPORTED_DURATION_BALANCING:
+        raise ValueError(
+            "Unsupported training.duration_balancing: " + duration_balancing
+        )
+    collector_domain_weight = float(training.get("collector_domain_weight", 2.0))
+    if not math.isfinite(collector_domain_weight) or collector_domain_weight <= 0:
+        raise ValueError(
+            "training.collector_domain_weight must be a finite positive number"
+        )
+    participant_inner_folds = int(training.get("participant_inner_folds", 5))
+    if participant_inner_folds < 2:
+        raise ValueError("training.participant_inner_folds must be at least 2")
+    bootstrap_iterations = int(training.get("bootstrap_iterations", 0))
+    if bootstrap_iterations < 0:
+        raise ValueError("training.bootstrap_iterations cannot be negative")
+    selection_metric = str(training.get("selection_metric", "macro_f1")).lower()
+    if selection_metric not in SUPPORTED_SELECTION_METRICS:
+        raise ValueError(
+            "Unsupported training.selection_metric: " + selection_metric
+        )
     return TrialConfig(
         train_dataset=str(raw["train_dataset"]).lower(),
         labels=labels,
         features=FeatureConfig(
-            default_window_seconds=int(features["default_window_seconds"]),
-            default_step_seconds=int(features["default_step_seconds"]),
+            default_window_seconds=default_window_seconds,
+            default_step_seconds=default_step_seconds,
+            context_windows_seconds=context_windows_seconds,
             sensors=sensors,
         ),
         training=TrialTrainingConfig(
@@ -331,6 +424,13 @@ def _trial_config(raw: dict[str, Any]) -> TrialConfig:
             optuna_trials=optuna_trials,
             model_families=families,
             calibration_fraction=calibration_fraction,
+            evaluation_strategy=evaluation_strategy,
+            weighting_strategy=weighting_strategy,
+            collector_domain_weight=collector_domain_weight,
+            duration_balancing=duration_balancing,
+            participant_inner_folds=participant_inner_folds,
+            bootstrap_iterations=bootstrap_iterations,
+            selection_metric=selection_metric,
         ),
         raw=raw,
     )

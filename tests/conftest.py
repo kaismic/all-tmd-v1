@@ -21,6 +21,16 @@ def config_factory(tmp_path):
         generic_minimum_sampling_rate: dict[str, float] | None = None,
         generic_maximum_sample_interval_ms: int | None = None,
         calibration_fraction: float | dict[str, float] = 0.5,
+        evaluation_strategy: str = "session_holdout",
+        weighting_strategy: str = "class_balanced",
+        collector_domain_weight: float = 2.0,
+        duration_balancing: str = "none",
+        participant_inner_folds: int = 5,
+        bootstrap_iterations: int = 0,
+        selection_metric: str = "macro_f1",
+        window_seconds: int = 1,
+        step_seconds: int = 1,
+        context_windows_seconds: list[int] | None = None,
         mlflow_enabled: bool = False,
         mlflow_tracking_uri: str | None = None,
         mlflow_artifact_location: str | None = None,
@@ -79,8 +89,8 @@ def config_factory(tmp_path):
             "train_dataset": train_dataset,
             "labels": {"bus": 0, "car": 1, "train": 2},
             "features": {
-                "default_window_seconds": 1,
-                "default_step_seconds": 1,
+                "default_window_seconds": window_seconds,
+                "default_step_seconds": step_seconds,
                 "sensors": sensors,
             },
             "training": {
@@ -88,8 +98,17 @@ def config_factory(tmp_path):
                 "optuna_trials": 1,
                 "model_families": ["random_forest"],
                 "calibration_fraction": calibration_fraction,
+                "evaluation_strategy": evaluation_strategy,
+                "weighting_strategy": weighting_strategy,
+                "collector_domain_weight": collector_domain_weight,
+                "duration_balancing": duration_balancing,
+                "participant_inner_folds": participant_inner_folds,
+                "bootstrap_iterations": bootstrap_iterations,
+                "selection_metric": selection_metric,
             },
         }
+        if context_windows_seconds is not None:
+            trial["features"]["context_windows_seconds"] = context_windows_seconds
         config_path = tmp_path / f"{train_dataset}.yaml"
         trials_path = tmp_path / f"{train_dataset}.json"
         config_path.write_text(yaml.safe_dump(config_data), encoding="utf-8")

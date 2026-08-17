@@ -140,6 +140,77 @@ def test_every_configured_mode_requires_two_collector_groups(config_factory):
         create_splits(frame, config)
 
 
+def test_nested_participant_splits_exclude_outer_and_inner_participants(config_factory):
+    config = config_factory(
+        evaluation_strategy="participant_nested_cv",
+        participant_inner_folds=3,
+    )
+    rows = [
+        {
+            **_row("us-tmd", f"source-{label}", label),
+            "participant_id": f"source-{label}",
+        }
+        for label in range(3)
+    ]
+    for participant_number in range(4):
+        participant = f"participant-{participant_number}"
+        for label in range(3):
+            rows.append(
+                {
+                    **_row(
+                        "collector",
+                        f"{participant}-session-{label}",
+                        label,
+                    ),
+                    "participant_id": participant,
+                }
+            )
+    frame = pd.DataFrame(rows).reset_index(drop=True)
+
+    manifest = create_splits(frame, config)
+
+    assert manifest["manifest_version"] == 4
+    assert manifest["group_column"] == "participant_id"
+    validated: list[int] = []
+    for outer in manifest["participant_outer_folds"]:
+        train_participants = set(frame.loc[outer["train_indices"], "participant_id"])
+        test_participants = set(frame.loc[outer["test_indices"], "participant_id"])
+        assert test_participants == {outer["held_out_participant_id"]}
+        assert train_participants.isdisjoint(test_participants)
+        validated.extend(outer["test_indices"])
+        for inner in outer["inner_folds"]:
+            inner_train = set(frame.loc[inner["train_indices"], "participant_id"])
+            inner_valid = set(frame.loc[inner["valid_indices"], "participant_id"])
+            assert inner_train.isdisjoint(inner_valid)
+    assert sorted(validated) == sorted(manifest["collector_evaluation_indices"])
+
+
+def test_nested_participant_splits_require_two_participants_per_mode(config_factory):
+    config = config_factory(evaluation_strategy="participant_nested_cv")
+    rows = [
+        {
+            **_row("us-tmd", f"source-{label}", label),
+            "participant_id": f"source-{label}",
+        }
+        for label in range(3)
+    ]
+    for label, participants in {
+        0: ["only-bus"],
+        1: ["p1", "p2"],
+        2: ["p1", "p2"],
+    }.items():
+        for participant in participants:
+            rows.append(
+                {
+                    **_row("collector", f"{participant}-{label}", label),
+                    "participant_id": participant,
+                }
+            )
+
+    with pytest.raises(ValueError, match="insufficient: bus"):
+        create_splits(pd.DataFrame(rows), config)
+
+
 def _row(domain: str, group_id: str, label: int) -> dict:
     return {
         "domain": domain,

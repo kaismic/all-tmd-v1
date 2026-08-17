@@ -230,3 +230,57 @@ def test_nor_source_accepts_a_file_path(config_factory, tmp_path):
     config = config_factory(train_dataset="nor-tmd")
     source = config.sources.training["nor-tmd"]
     assert source.input_path == tmp_path / "data" / "nor"
+
+
+def test_recommended_training_options_are_parsed(config_factory):
+    config = config_factory(
+        evaluation_strategy="participant_nested_cv",
+        weighting_strategy="hierarchical",
+        collector_domain_weight=1.5,
+        duration_balancing="smallest_mode",
+        participant_inner_folds=3,
+        bootstrap_iterations=250,
+        selection_metric="minimum_class_recall",
+    )
+
+    assert config.trial.training.evaluation_strategy == "participant_nested_cv"
+    assert config.trial.training.weighting_strategy == "hierarchical"
+    assert config.trial.training.collector_domain_weight == 1.5
+    assert config.trial.training.duration_balancing == "smallest_mode"
+    assert config.trial.training.participant_inner_folds == 3
+    assert config.trial.training.bootstrap_iterations == 250
+    assert config.trial.training.selection_metric == "minimum_class_recall"
+
+
+def test_multiscale_contexts_expand_feature_names(config_factory):
+    config = config_factory(
+        sensors={"accelerometer": ["mean", "spectral_entropy"]},
+        window_seconds=60,
+        step_seconds=30,
+        context_windows_seconds=[60, 10, 30],
+    )
+
+    assert config.trial.features.context_windows_seconds == (10, 30, 60)
+    assert config.trial.feature_names == [
+        "accelerometer#mean@10s",
+        "accelerometer#spectral_entropy@10s",
+        "accelerometer#mean@30s",
+        "accelerometer#spectral_entropy@30s",
+        "accelerometer#mean@60s",
+        "accelerometer#spectral_entropy@60s",
+    ]
+
+
+@pytest.mark.parametrize(
+    "contexts",
+    [[], [0, 60], [10, 10, 60], [10, 30], [10, 61]],
+)
+def test_context_windows_must_be_unique_valid_and_include_default(
+    config_factory,
+    contexts,
+):
+    with pytest.raises(ValueError, match="context_windows_seconds"):
+        config_factory(
+            window_seconds=60,
+            context_windows_seconds=contexts,
+        )
