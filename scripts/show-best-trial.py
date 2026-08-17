@@ -96,10 +96,12 @@ def _read_trial_result(metrics_path: Path, selector_metric: str) -> TrialResult:
     if not recalls:
         raise ValueError(f"{metrics_path}: classification report has no transport modes")
 
-    trial_hash = metrics.get("config_hash")
+    trial_hash = metrics.get("trial_hash", metrics.get("config_hash"))
     train_dataset = metrics.get("train_dataset")
     if not isinstance(trial_hash, str) or not trial_hash:
-        raise ValueError(f"{metrics_path}: config_hash must be a non-empty string")
+        raise ValueError(
+            f"{metrics_path}: trial_hash or config_hash must be a non-empty string"
+        )
     if not isinstance(train_dataset, str) or not train_dataset:
         raise ValueError(f"{metrics_path}: train_dataset must be a non-empty string")
 

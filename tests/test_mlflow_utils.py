@@ -33,7 +33,7 @@ def test_mlflow_run_name_includes_utc_start_time_and_collector_count(
         datetime(2026, 8, 12, 3, 45, 12, tzinfo=timezone.utc),
     )
 
-    assert name == f"us-tmd-{config.config_hash[:8]}-20260812T034512Z-42"
+    assert name == f"us-tmd-{config.trial_hash[:8]}-20260812T034512Z-42"
 
 
 def test_collector_session_summary_is_order_independent():
@@ -152,7 +152,7 @@ def test_start_run_logs_dataset_inputs_and_collector_summary(
 
     assert recorded["experiment"] == "test"
     assert recorded["run_name"].startswith(
-        f"us-tmd-{config.config_hash[:8]}-"
+        f"us-tmd-{config.trial_hash[:8]}-"
     )
     assert recorded["run_name"].endswith("Z-2")
     assert recorded["params"]["sensors"] == "accelerometer,pressure"

@@ -335,26 +335,29 @@ after the script completes all configured trials, or failure if the script
 stops early. Notification delivery is best-effort and does not change a
 pipeline task's exit status.
 
-Each trial object is hashed independently using canonical JSON after removing
-its top-level `training` field. Neither that field (including all its
-subproperties) nor fields in `model.config.yaml` contribute to the hash, so
-trials that differ only in training settings reuse the same ingested events
-and extracted features. The full current trial remains recorded in
-`trial.json`. Outputs are written beneath:
+Each trial has two hashes. The feature-cache hash uses canonical JSON after
+removing the top-level `training` field; neither that field nor
+`model.config.yaml` contributes, so training-only variants reuse ingestion and
+features. The full trial hash includes training settings and gives every model,
+report, split, and trial snapshot an isolated path. The most recently executed
+trial also remains at the feature-cache root as `trial.json` for compatibility.
+Outputs are written beneath:
 
 ```text
-all-tmd-work/<trial-sha256>/
+all-tmd-work/<feature-cache-sha256>/
 |-- events/
 |   |-- <train_dataset>/part-*.parquet
 |   `-- collector/part-*.parquet
 |-- features/
 |   |-- <train_dataset>/part-*.parquet
 |   `-- collector/part-*.parquet
-|-- reports/<train_dataset>/
+|-- reports/<train_dataset>/<full-trial-sha256>/
 |   |-- metrics.json
 |   |-- model.joblib
-|   `-- optuna-trials.csv
-|-- splits/<train_dataset>.json
+|   |-- optuna-trials.csv
+|   |-- nested-optuna-trials.csv
+|   `-- trial.json
+|-- splits/<train_dataset>/<full-trial-sha256>.json
 `-- trial.json
 ```
 
@@ -487,9 +490,9 @@ calibration group exactly once, and Optuna is scored from the combined
 out-of-fold predictions rather than requiring every class in every fold.
 
 Because calibration fractions are under the trial's top-level `training`
-field, changing them does not change the configuration hash. Existing ingested
-events and extracted features are reused, while the split, model, reports, and
-MLflow run are regenerated.
+field, changing them does not change the feature-cache hash. Existing ingested
+events and extracted features are reused, while the full trial hash gives the
+new split, model, reports, and MLflow run their own identity.
 
 ### Participant-independent evaluation and balancing
 
@@ -575,7 +578,7 @@ runs that use the same collector snapshot directly searchable and comparable
 without storing local download state in `model.config.yaml`.
 
 Run names use
-`<train-dataset>-<8-character-config-hash>-<UTC-start-time>-<collector-session-count>`,
+`<train-dataset>-<8-character-full-trial-hash>-<UTC-start-time>-<collector-session-count>`,
 for example `nor-tmd-a1b2c3d4-20260812T034512Z-42`. The compact UTC timestamp
 distinguishes repeated runs of the same trial, while the final value makes the
 collector snapshot size visible in the MLflow run list.

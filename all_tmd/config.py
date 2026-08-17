@@ -104,6 +104,17 @@ class TrialConfig:
         return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
     @property
+    def trial_hash(self) -> str:
+        """Hash the complete trial, including training-only settings."""
+        canonical = json.dumps(
+            self.raw,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+        )
+        return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+    @property
     def feature_names(self) -> list[str]:
         single_default_context = self.features.context_windows_seconds == (
             self.features.default_window_seconds,
@@ -265,6 +276,10 @@ class PipelineConfig:
     def config_hash(self) -> str:
         return self.trial.config_hash
 
+    @property
+    def trial_hash(self) -> str:
+        return self.trial.trial_hash
+
     def run_dir(self) -> Path:
         run_dir = self.dataset.work_dir / self.config_hash
         run_dir.mkdir(parents=True, exist_ok=True)
@@ -290,6 +305,22 @@ class PipelineConfig:
         if saved_canonical != canonical:
             trial_path.write_text(canonical, encoding="utf-8")
         return run_dir
+
+    def report_dir(self) -> Path:
+        return (
+            self.run_dir()
+            / "reports"
+            / self.trial.train_dataset
+            / self.trial_hash
+        )
+
+    def split_path(self) -> Path:
+        return (
+            self.run_dir()
+            / "splits"
+            / self.trial.train_dataset
+            / f"{self.trial_hash}.json"
+        )
 
     @property
     def training_source(self) -> SourceConfig:

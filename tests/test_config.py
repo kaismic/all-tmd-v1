@@ -53,13 +53,18 @@ def test_training_fields_do_not_affect_hash_or_cause_collision(config_factory):
     )
 
     assert changed_training.config_hash == config.config_hash
+    assert changed_training.trial_hash != config.trial_hash
     original_run_dir = config.run_dir()
     assert changed_training.run_dir() == original_run_dir
+    changed_report_dir = changed_training.report_dir()
+    changed_split_path = changed_training.split_path()
     saved_trial = json.loads(
         (original_run_dir / "trial.json").read_text(encoding="utf-8")
     )
     assert saved_trial["training"]["random_seed"] == 123
     assert saved_trial["training"]["optuna_trials"] == 25
+    assert changed_report_dir != config.report_dir()
+    assert changed_split_path != config.split_path()
 
 
 def test_scalar_calibration_fraction_applies_to_every_mode(config_factory):

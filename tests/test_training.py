@@ -69,7 +69,7 @@ def test_training_writes_required_reports(config_factory, monkeypatch):
     )
 
     metrics = train(config)
-    report_dir = run_dir / "reports" / "us-tmd"
+    report_dir = config.report_dir()
     assert metrics["collector_holdout"]["rows"] == 6
     assert (report_dir / "metrics.json").exists()
     assert (report_dir / "model.joblib").exists()
@@ -78,7 +78,8 @@ def test_training_writes_required_reports(config_factory, monkeypatch):
         "metrics.json",
         "model.joblib",
         "optuna-trials.csv",
-        "us-tmd.json",
+        f"{config.trial_hash}.json",
+        "trial.json",
     }
     assert [
         (artifact_file, kwargs.get("normalize", False))
@@ -153,7 +154,7 @@ def test_nested_participant_training_reports_unseen_participant_and_session_metr
     assert metrics["collector_holdout"]["participants"] == 3
     assert metrics["collector_holdout"]["session_level"]["rows"] == 9
     assert "participant_cluster_95_ci" in metrics["collector_holdout"]
-    report_dir = run_dir / "reports" / "us-tmd"
+    report_dir = config.report_dir()
     assert (report_dir / "nested-optuna-trials.csv").exists()
 
 

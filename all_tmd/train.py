@@ -45,8 +45,13 @@ def train(config: PipelineConfig) -> dict[str, Any]:
     manifest = create_splits(frame, config)
     split_path = write_splits(manifest, config)
 
-    report_dir = run_dir / "reports" / source_name
+    report_dir = config.report_dir()
     report_dir.mkdir(parents=True, exist_ok=True)
+    trial_snapshot_path = report_dir / "trial.json"
+    trial_snapshot_path.write_text(
+        json.dumps(config.trial.raw, sort_keys=True, indent=2) + "\n",
+        encoding="utf-8",
+    )
     x = frame[feature_names].to_numpy(dtype=np.float32)
     y = frame["label"].to_numpy(dtype=np.int64)
 
@@ -63,6 +68,7 @@ def train(config: PipelineConfig) -> dict[str, Any]:
         metrics.update(
             {
                 "config_hash": config.config_hash,
+                "trial_hash": config.trial_hash,
                 "trial_index": config.trial_index,
                 "train_dataset": source_name,
                 "feature_names": feature_names,
@@ -99,7 +105,13 @@ def train(config: PipelineConfig) -> dict[str, Any]:
                 {"best_cross_validation_score": metrics["best_cross_validation_score"]}
             )
             _log_holdout_confusion_matrices(holdout_metrics, config)
-            artifacts = [metrics_path, trials_path, model_path, split_path]
+            artifacts = [
+                metrics_path,
+                trials_path,
+                model_path,
+                split_path,
+                trial_snapshot_path,
+            ]
             if nested_trials_path.exists():
                 artifacts.append(nested_trials_path)
             for artifact in artifacts:
@@ -156,7 +168,11 @@ def _train_session_holdout(
         {
             "evaluation_strategy": "session_holdout",
             "best_cross_validation_score": float(study.best_value),
-            "best_cross_validation_macro_f1": float(study.best_value),
+            **(
+                {"best_cross_validation_macro_f1": float(study.best_value)}
+                if config.trial.training.selection_metric == "macro_f1"
+                else {}
+            ),
             "selection_metric": config.trial.training.selection_metric,
             "cross_validation": {
                 "method": "grouped_out_of_fold",
@@ -295,7 +311,11 @@ def _train_participant_nested(
         {
             "evaluation_strategy": "participant_nested_cv",
             "best_cross_validation_score": float(final_study.best_value),
-            "best_cross_validation_macro_f1": float(final_study.best_value),
+            **(
+                {"best_cross_validation_macro_f1": float(final_study.best_value)}
+                if config.trial.training.selection_metric == "macro_f1"
+                else {}
+            ),
             "selection_metric": config.trial.training.selection_metric,
             "cross_validation": {
                 "method": "nested_participant_out_of_fold",
@@ -359,9 +379,10 @@ def _optimize(
                 configured_labels,
                 config.trial.training.selection_metric,
             )
-            trial.report(score, step=fold_number)
-            if trial.should_prune():
-                raise optuna.TrialPruned()
+            if set(configured_labels).issubset(set(np.concatenate(truth_parts))):
+                trial.report(score, step=fold_number)
+                if trial.should_prune():
+                    raise optuna.TrialPruned()
         return _selection_score(
             np.concatenate(truth_parts),
             np.concatenate(prediction_parts),

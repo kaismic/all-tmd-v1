@@ -255,7 +255,7 @@ def write_splits(
     manifest: dict[str, Any],
     config: PipelineConfig,
 ) -> Path:
-    path = config.run_dir() / "splits" / f"{config.trial.train_dataset}.json"
+    path = config.split_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return path

@@ -73,6 +73,7 @@ def start_run(
         mlflow.log_params(
             {
                 "config_hash": config.config_hash,
+                "trial_hash": config.trial_hash,
                 "trial_index": config.trial_index,
                 "train_dataset": config.trial.train_dataset,
                 "window_seconds": config.trial.features.default_window_seconds,
@@ -134,7 +135,7 @@ def mlflow_run_name(
         raise ValueError("MLflow run start time must include timezone information")
     utc_time = start_time.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     return (
-        f"{config.trial.train_dataset}-{config.config_hash[:8]}-"
+        f"{config.trial.train_dataset}-{config.trial_hash[:8]}-"
         f"{utc_time}-{collector_session_count}"
     )
 
