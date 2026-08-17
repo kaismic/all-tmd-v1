@@ -70,33 +70,30 @@ def start_run(
     with mlflow.start_run(
         run_name=run_name
     ) as run:
-        mlflow.log_params(
-            {
-                "config_hash": config.config_hash,
-                "trial_hash": config.trial_hash,
-                "trial_index": config.trial_index,
-                "train_dataset": config.trial.train_dataset,
-                "window_seconds": config.trial.features.default_window_seconds,
-                "step_seconds": config.trial.features.default_step_seconds,
-                **feature_params,
-                **collector_quality_params,
-                **calibration_params,
-                "model_families": ",".join(config.trial.training.model_families),
-                "optuna_trials": config.trial.training.optuna_trials,
-                "evaluation_strategy": config.trial.training.evaluation_strategy,
-                "weighting_strategy": config.trial.training.weighting_strategy,
-                "collector_domain_weight": (
-                    config.trial.training.collector_domain_weight
-                ),
-                "duration_balancing": config.trial.training.duration_balancing,
-                "selection_metric": config.trial.training.selection_metric,
-                "participant_inner_folds": (
-                    config.trial.training.participant_inner_folds
-                ),
-                "collector_session_digest": collector_digest,
-                "collector_session_count": collector_count,
-            }
-        )
+        run_params = {
+            "config_hash": config.config_hash,
+            "trial_hash": config.trial_hash,
+            "trial_index": config.trial_index,
+            "train_dataset": config.trial.train_dataset,
+            "window_seconds": config.trial.features.default_window_seconds,
+            "step_seconds": config.trial.features.default_step_seconds,
+            **feature_params,
+            **collector_quality_params,
+            **calibration_params,
+            "model_families": ",".join(config.trial.training.model_families),
+            "optuna_trials": config.trial.training.optuna_trials,
+            "evaluation_strategy": config.trial.training.evaluation_strategy,
+            "weighting_strategy": config.trial.training.weighting_strategy,
+            "collector_domain_weight": config.trial.training.collector_domain_weight,
+            "duration_balancing": config.trial.training.duration_balancing,
+            "selection_metric": config.trial.training.selection_metric,
+            "participant_inner_folds": config.trial.training.participant_inner_folds,
+            "collector_session_digest": collector_digest,
+            "collector_session_count": collector_count,
+        }
+        if config.trial.run_name is not None:
+            run_params["configured_run_name"] = config.trial.run_name
+        mlflow.log_params(run_params)
         log_dataset_inputs(config, frame, split_manifest)
         yield run
 
@@ -134,10 +131,13 @@ def mlflow_run_name(
     if start_time.tzinfo is None:
         raise ValueError("MLflow run start time must include timezone information")
     utc_time = start_time.astimezone(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    return (
+    generated_name = (
         f"{config.trial.train_dataset}-{config.trial_hash[:8]}-"
         f"{utc_time}-{collector_session_count}"
     )
+    if config.trial.run_name is None:
+        return generated_name
+    return f"{config.trial.run_name}-{generated_name}"
 
 
 def collector_session_summary(frame: pd.DataFrame) -> tuple[str, int]:

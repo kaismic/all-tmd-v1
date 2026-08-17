@@ -67,6 +67,23 @@ def test_training_fields_do_not_affect_hash_or_cause_collision(config_factory):
     assert changed_split_path != config.split_path()
 
 
+def test_run_name_is_display_metadata_and_does_not_affect_hashes(config_factory):
+    config = config_factory()
+    named = config_factory(run_name="weighting-hierarchical-domain-1")
+
+    assert named.trial.run_name == "weighting-hierarchical-domain-1"
+    assert named.config_hash == config.config_hash
+    assert named.trial_hash == config.trial_hash
+
+
+@pytest.mark.parametrize("run_name", ["", "   ", 42, False])
+def test_run_name_must_be_a_non_empty_string_when_present(
+    config_factory, run_name
+):
+    with pytest.raises(ValueError, match="run_name"):
+        config_factory(run_name=run_name)
+
+
 def test_scalar_calibration_fraction_applies_to_every_mode(config_factory):
     config = config_factory(calibration_fraction=0.5)
 

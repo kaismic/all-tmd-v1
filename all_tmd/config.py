@@ -18,6 +18,7 @@ SUPPORTED_EVALUATION_STRATEGIES = ("session_holdout", "participant_nested_cv")
 SUPPORTED_WEIGHTING_STRATEGIES = ("class_balanced", "hierarchical")
 SUPPORTED_DURATION_BALANCING = ("none", "smallest_mode")
 SUPPORTED_SELECTION_METRICS = ("macro_f1", "minimum_class_recall")
+TRIAL_DISPLAY_FIELDS = frozenset({"run_name"})
 
 
 @dataclass(frozen=True)
@@ -81,6 +82,7 @@ class TrialTrainingConfig:
 
 @dataclass(frozen=True)
 class TrialConfig:
+    run_name: str | None
     train_dataset: str
     labels: dict[str, int]
     features: FeatureConfig
@@ -90,7 +92,17 @@ class TrialConfig:
     @property
     def config_hash_input(self) -> dict[str, Any]:
         """Return the trial fields that affect ingestion and feature extraction."""
-        return {key: value for key, value in self.raw.items() if key != "training"}
+        excluded = TRIAL_DISPLAY_FIELDS | {"training"}
+        return {key: value for key, value in self.raw.items() if key not in excluded}
+
+    @property
+    def trial_hash_input(self) -> dict[str, Any]:
+        """Return behavior-affecting fields for the complete trial hash."""
+        return {
+            key: value
+            for key, value in self.raw.items()
+            if key not in TRIAL_DISPLAY_FIELDS
+        }
 
     @property
     def config_hash(self) -> str:
@@ -107,7 +119,7 @@ class TrialConfig:
     def trial_hash(self) -> str:
         """Hash the complete trial, including training-only settings."""
         canonical = json.dumps(
-            self.raw,
+            self.trial_hash_input,
             sort_keys=True,
             separators=(",", ":"),
             ensure_ascii=True,
@@ -296,7 +308,7 @@ class PipelineConfig:
             saved_hash_input = {
                 key: value
                 for key, value in saved_trial.items()
-                if key != "training"
+                if key not in (TRIAL_DISPLAY_FIELDS | {"training"})
             }
             if saved_hash_input != self.trial.config_hash_input:
                 raise ValueError(f"Trial hash collision at {trial_path}")
@@ -349,6 +361,14 @@ def _trial_config(raw: dict[str, Any]) -> TrialConfig:
     missing = sorted(required - set(raw))
     if missing:
         raise ValueError("Trial is missing field(s): " + ", ".join(missing))
+
+    run_name_value = raw.get("run_name")
+    if run_name_value is None:
+        run_name = None
+    elif not isinstance(run_name_value, str) or not run_name_value.strip():
+        raise ValueError("Trial run_name must be a non-empty string when provided")
+    else:
+        run_name = run_name_value.strip()
 
     features = raw["features"]
     default_window_seconds = int(features["default_window_seconds"])
@@ -442,6 +462,7 @@ def _trial_config(raw: dict[str, Any]) -> TrialConfig:
             "Unsupported training.selection_metric: " + selection_metric
         )
     return TrialConfig(
+        run_name=run_name,
         train_dataset=str(raw["train_dataset"]).lower(),
         labels=labels,
         features=FeatureConfig(

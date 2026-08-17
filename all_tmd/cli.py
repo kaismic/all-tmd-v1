@@ -30,9 +30,14 @@ def main() -> None:
         args.trials,
         args.trial_index,
     )
+    run_name = (
+        f", run_name={config.trial.run_name}"
+        if config.trial.run_name is not None
+        else ""
+    )
     progress(
-        f"Command starting: command={args.command}, trial={args.trial_index}, "
-        f"config_hash={config.config_hash}"
+        f"Command starting: command={args.command}, trial={args.trial_index}"
+        f"{run_name}, config_hash={config.config_hash}"
     )
     if args.command == "ingest-train-dataset":
         result = {"events_path": str(ingest_training_dataset(config))}

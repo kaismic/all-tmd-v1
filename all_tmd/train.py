@@ -70,6 +70,7 @@ def train(config: PipelineConfig) -> dict[str, Any]:
                 "config_hash": config.config_hash,
                 "trial_hash": config.trial_hash,
                 "trial_index": config.trial_index,
+                "run_name": config.trial.run_name,
                 "train_dataset": source_name,
                 "feature_names": feature_names,
                 "rows": int(len(frame)),

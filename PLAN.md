@@ -26,7 +26,7 @@ I will dynamically edit the content of `trials.json` to manually tweak configura
 ### Configuration Hash
 Currently, in `us-tmd-v2` the configuration hash is created by appending all the fields in `model.config.yaml`. However, in `all-tmd-v1`, the configuration hash should be created for each objects in `trials.json` separately.
 
-However, the `training` field and its subproperties in the trial objects should be excluded from configuration hash input. This is because they do not influence ingestion and feature extraction output.
+However, the `training` field and its subproperties in the trial objects should be excluded from configuration hash input. This is because they do not influence ingestion and feature extraction output. The optional top-level `run_name` is display metadata and is excluded from both the feature-cache hash and full-trial hash. When present, it prefixes the existing dataset/hash/time/collector-count run name for both local Docker and AWS EC2 execution.
 An additional full-trial hash should include training fields and isolate report,
 model, split, and trial-snapshot artifacts, so training-only ablations reuse the
 feature cache without overwriting one another.

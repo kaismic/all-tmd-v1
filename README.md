@@ -263,6 +263,20 @@ writes their Cartesian product to `trials.json`. Options in the first
 dimension vary slowest. The example independently varies the sensor set, the
 accelerometer feature set, and the paired window/step values.
 
+Each trial may include an optional top-level `run_name` string. It is display
+metadata and does not affect either configuration hash. A dimension can vary
+it with `set` alongside the behavior it describes, for example:
+
+```json
+{
+  "set": {
+    "run_name": "hierarchical-domain-1",
+    "training.weighting_strategy": "hierarchical",
+    "training.collector_domain_weight": 1.0
+  }
+}
+```
+
 Each option supports these operations:
 
 - `set` maps dotted trial paths to replacement JSON values. Put related paths
@@ -577,11 +591,16 @@ unique collector session IDs, plus `collector_session_count`. These fields make
 runs that use the same collector snapshot directly searchable and comparable
 without storing local download state in `model.config.yaml`.
 
-Run names use
+Without `run_name`, run names use
 `<train-dataset>-<8-character-full-trial-hash>-<UTC-start-time>-<collector-session-count>`,
-for example `nor-tmd-a1b2c3d4-20260812T034512Z-42`. The compact UTC timestamp
-distinguishes repeated runs of the same trial, while the final value makes the
-collector snapshot size visible in the MLflow run list.
+for example `nor-tmd-a1b2c3d4-20260812T034512Z-42`. When configured, the custom
+value is prepended, producing
+`<run-name>-<train-dataset>-<hash>-<time>-<count>`. The same behavior is used by
+local Docker and AWS EC2 trials. The compact UTC timestamp distinguishes
+repeated runs of the same trial, while the final value makes the collector
+snapshot size visible in the MLflow run list. The custom value is also logged
+as `configured_run_name`, written to `metrics.json`, shown in command progress,
+and used by the downloaded-result comparison scripts.
 
 Run parameters also expose the complete configured feature set. The existing
 `sensors` parameter provides the sensor names, `feature_names` provides every

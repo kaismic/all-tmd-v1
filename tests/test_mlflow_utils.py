@@ -36,6 +36,21 @@ def test_mlflow_run_name_includes_utc_start_time_and_collector_count(
     assert name == f"us-tmd-{config.trial_hash[:8]}-20260812T034512Z-42"
 
 
+def test_mlflow_run_name_prefixes_configured_run_name(config_factory):
+    config = config_factory(run_name="participant-baseline")
+
+    name = mlflow_run_name(
+        config,
+        42,
+        datetime(2026, 8, 12, 3, 45, 12, tzinfo=timezone.utc),
+    )
+
+    assert name == (
+        f"participant-baseline-us-tmd-{config.trial_hash[:8]}-"
+        "20260812T034512Z-42"
+    )
+
+
 def test_collector_session_summary_is_order_independent():
     frame = _dataset_frame()
 
@@ -107,6 +122,7 @@ def test_start_run_logs_dataset_inputs_and_collector_summary(
 ):
     config = config_factory(
         mlflow_enabled=True,
+        run_name="local-smoke",
         sensors={
             "accelerometer": ["mean", "standard deviation"],
             "pressure": ["range"],
@@ -152,7 +168,7 @@ def test_start_run_logs_dataset_inputs_and_collector_summary(
 
     assert recorded["experiment"] == "test"
     assert recorded["run_name"].startswith(
-        f"us-tmd-{config.trial_hash[:8]}-"
+        f"local-smoke-us-tmd-{config.trial_hash[:8]}-"
     )
     assert recorded["run_name"].endswith("Z-2")
     assert recorded["params"]["sensors"] == "accelerometer,pressure"
@@ -165,6 +181,7 @@ def test_start_run_logs_dataset_inputs_and_collector_summary(
         "accelerometer#mean,accelerometer#standard_deviation,pressure#range"
     )
     assert recorded["params"]["collector_session_count"] == 2
+    assert recorded["params"]["configured_run_name"] == "local-smoke"
     assert len(recorded["params"]["collector_session_digest"]) == 64
     assert recorded["params"]["collector_max_sample_interval_ms"] == 500
     assert (

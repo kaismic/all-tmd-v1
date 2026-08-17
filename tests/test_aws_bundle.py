@@ -39,6 +39,7 @@ def test_full_bundle_generates_cartesian_trials_and_manifest(tmp_path):
 
     trials = json.loads((output / "trials.json").read_text(encoding="utf-8"))
     assert len(trials) == 4
+    assert {trial["run_name"] for trial in trials} == {"aws-sweep"}
     assert manifest["trial_count"] == 4
     assert manifest["generated_trial_count"] == 4
     assert manifest["mode"] == "full"
@@ -79,6 +80,7 @@ def test_smoke_bundle_uses_first_trial_and_one_optuna_evaluation(tmp_path):
 
     trials = json.loads((output / "trials.json").read_text(encoding="utf-8"))
     assert len(trials) == 1
+    assert trials[0]["run_name"] == "aws-sweep"
     assert trials[0]["training"]["optuna_trials"] == 1
     assert manifest["trial_count"] == 1
     assert manifest["generated_trial_count"] == 4
@@ -129,6 +131,7 @@ def _project(tmp_path: Path) -> Path:
     )
     parameters = {
         "default": {
+            "run_name": "aws-sweep",
             "features": {
                 "default_window_seconds": 10,
                 "default_step_seconds": 5,

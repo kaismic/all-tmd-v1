@@ -8,7 +8,7 @@ from all_tmd.train import train
 
 
 def test_training_writes_required_reports(config_factory, monkeypatch):
-    config = config_factory(mlflow_enabled=True)
+    config = config_factory(mlflow_enabled=True, run_name="report-name")
     logged_artifacts = []
     logged_confusion_matrices = []
     monkeypatch.setattr(
@@ -71,6 +71,7 @@ def test_training_writes_required_reports(config_factory, monkeypatch):
     metrics = train(config)
     report_dir = config.report_dir()
     assert metrics["collector_holdout"]["rows"] == 6
+    assert metrics["run_name"] == "report-name"
     assert (report_dir / "metrics.json").exists()
     assert (report_dir / "model.joblib").exists()
     assert (report_dir / "optuna-trials.csv").exists()

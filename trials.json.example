@@ -1,6 +1,7 @@
 
 [
   {
+    "run_name": "us-tmd-baseline",
     "train_dataset": "us-tmd",
     "labels": { "bus": 0, "car": 1, "train": 2 },
     "features": {
@@ -33,6 +34,7 @@
     }
   },
   {
+    "run_name": "nor-tmd-baseline",
     "train_dataset": "nor-tmd",
     "labels": { "bus": 0, "car": 1, "train": 2 },
     "features": {

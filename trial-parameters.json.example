@@ -1,5 +1,6 @@
 {
   "default": {
+    "run_name": "feature-sweep",
     "train_dataset": "us-tmd",
     "labels": {
       "bus": 0,

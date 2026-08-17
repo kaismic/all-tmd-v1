@@ -34,6 +34,7 @@ def config_factory(tmp_path):
         mlflow_enabled: bool = False,
         mlflow_tracking_uri: str | None = None,
         mlflow_artifact_location: str | None = None,
+        run_name: str | None = None,
     ) -> PipelineConfig:
         sensors = sensors or {"accelerometer": ["mean"]}
         collector_minimum_sampling_rate = collector_minimum_sampling_rate or {
@@ -107,6 +108,8 @@ def config_factory(tmp_path):
                 "selection_metric": selection_metric,
             },
         }
+        if run_name is not None:
+            trial["run_name"] = run_name
         if context_windows_seconds is not None:
             trial["features"]["context_windows_seconds"] = context_windows_seconds
         config_path = tmp_path / f"{train_dataset}.yaml"

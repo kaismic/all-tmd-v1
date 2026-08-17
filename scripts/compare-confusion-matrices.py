@@ -128,10 +128,21 @@ def _read_trial_result(
         )
     if not isinstance(train_dataset, str) or not train_dataset:
         raise ValueError(f"{metrics_path}: train_dataset must be a non-empty string")
+    configured_run_name = metrics.get("run_name")
+    if configured_run_name is not None and (
+        not isinstance(configured_run_name, str) or not configured_run_name.strip()
+    ):
+        raise ValueError(f"{metrics_path}: run_name must be a non-empty string or null")
+    generated_name = f"{train_dataset}-{trial_hash[:8]}"
+    trial_name = (
+        generated_name
+        if configured_run_name is None
+        else f"{configured_run_name.strip()}-{generated_name}"
+    )
 
     return (
         TrialResult(
-            trial_name=f"{train_dataset}-{trial_hash[:8]}",
+            trial_name=trial_name,
             trial_hash=trial_hash,
             predicted_labels=predicted_labels,
             normalized_predicted_values=normalized,

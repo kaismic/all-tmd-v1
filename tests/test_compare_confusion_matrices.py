@@ -20,6 +20,7 @@ def _write_metrics(
     run_name: str,
     trial_hash: str,
     matrix: list[list[int]],
+    configured_run_name: str | None = None,
 ) -> None:
     metrics_dir = (
         results_root
@@ -45,6 +46,8 @@ def _write_metrics(
             "confusion_matrix": matrix,
         },
     }
+    if configured_run_name is not None:
+        metrics["run_name"] = configured_run_name
     (metrics_dir / "metrics.json").write_text(json.dumps(metrics), encoding="utf-8")
 
 
@@ -73,6 +76,20 @@ def test_collect_trial_results_normalizes_and_ranks_selected_true_label(tmp_path
     assert results[0].normalized_true_label_accuracy == 0.9
     assert results[0].normalized_predicted_values == (0.9, 0.1)
     assert results[0].support == 10
+
+
+def test_collect_trial_results_prefixes_configured_run_name(tmp_path):
+    _write_metrics(
+        tmp_path,
+        run_name="run-a",
+        configured_run_name="02-hierarchical-domain-1",
+        trial_hash="a" * 64,
+        matrix=[[8, 2], [4, 6]],
+    )
+
+    results, _, _ = MODULE.collect_trial_results(tmp_path, "bus")
+
+    assert results[0].trial_name == "02-hierarchical-domain-1-nor-tmd-aaaaaaaa"
 
 
 def test_main_limits_displayed_trials_and_reports_array_labels(tmp_path, capsys):

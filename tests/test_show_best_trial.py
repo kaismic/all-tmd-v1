@@ -21,6 +21,7 @@ def _write_metrics(
     accuracy: float,
     macro_f1: float,
     recalls: dict[str, float],
+    configured_run_name: str | None = None,
 ) -> None:
     metrics_dir = (
         results_root
@@ -50,6 +51,8 @@ def _write_metrics(
             },
         },
     }
+    if configured_run_name is not None:
+        metrics["run_name"] = configured_run_name
     (metrics_dir / "metrics.json").write_text(json.dumps(metrics), encoding="utf-8")
 
 
@@ -80,6 +83,25 @@ def test_find_best_trial_uses_selected_metric_and_returns_mode_recalls(tmp_path)
     assert result.trial_hash == "a" * 64
     assert result.selector_value == 0.91
     assert result.recalls == (("bus", 0.7), ("car", 0.8), ("train", 0.9))
+
+
+def test_find_best_trial_prefixes_configured_run_name(tmp_path):
+    _write_metrics(
+        tmp_path,
+        run_id="selected-run",
+        configured_run_name="01-participant-baseline",
+        trial_hash="a" * 64,
+        balanced_accuracy=0.91,
+        accuracy=0.8,
+        macro_f1=0.85,
+        recalls={"bus": 0.7, "car": 0.8, "train": 0.9},
+    )
+
+    result = MODULE.find_best_trial(
+        tmp_path / "selected-run", "collector_holdout.balanced_accuracy"
+    )
+
+    assert result.trial_name == "01-participant-baseline-nor-tmd-aaaaaaaa"
 
 
 def test_main_scopes_search_to_run_id_and_prints_result(tmp_path, capsys):

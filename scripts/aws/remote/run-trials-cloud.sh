@@ -247,7 +247,11 @@ import sys
 with open(sys.argv[1], encoding="utf-8") as stream:
     trials = json.load(stream)
 for trial in trials:
-    relevant = {key: value for key, value in trial.items() if key != "training"}
+    relevant = {
+        key: value
+        for key, value in trial.items()
+        if key not in {"run_name", "training"}
+    }
     canonical = json.dumps(
         relevant, sort_keys=True, separators=(",", ":"), ensure_ascii=True
     )
