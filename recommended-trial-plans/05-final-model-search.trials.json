@@ -1,0 +1,138 @@
+[
+  {
+    "run_name": "05-final-search-macro-f1",
+    "train_dataset": "nor-tmd",
+    "labels": {
+      "bus": 0,
+      "car": 1,
+      "train": 2
+    },
+    "features": {
+      "default_window_seconds": 60,
+      "default_step_seconds": 30,
+      "context_windows_seconds": [
+        10,
+        30,
+        60
+      ],
+      "sensors": {
+        "accelerometer": [
+          "mean",
+          "standard_deviation",
+          "range",
+          "minimum",
+          "mean_absolute_deviation",
+          "mean_absolute_jerk",
+          "jerk_standard_deviation",
+          "spectral_energy",
+          "dominant_frequency_hz",
+          "spectral_entropy",
+          "mean_axis_correlation"
+        ],
+        "gyroscope": [
+          "mean",
+          "standard_deviation",
+          "range",
+          "minimum",
+          "mean_absolute_deviation",
+          "mean_absolute_jerk",
+          "jerk_standard_deviation",
+          "spectral_energy",
+          "dominant_frequency_hz",
+          "spectral_entropy",
+          "mean_axis_correlation"
+        ],
+        "magnetometer": [
+          "standard_deviation",
+          "range",
+          "minimum"
+        ]
+      }
+    },
+    "training": {
+      "random_seed": 42,
+      "optuna_trials": 45,
+      "model_families": [
+        "random_forest",
+        "xgboost",
+        "mlp"
+      ],
+      "calibration_fraction": 0.5,
+      "evaluation_strategy": "participant_nested_cv",
+      "participant_inner_folds": 5,
+      "weighting_strategy": "hierarchical",
+      "collector_domain_weight": 1.0,
+      "duration_balancing": "none",
+      "selection_metric": "macro_f1",
+      "bootstrap_iterations": 2000
+    }
+  },
+  {
+    "run_name": "05-final-search-minimum-class-recall",
+    "train_dataset": "nor-tmd",
+    "labels": {
+      "bus": 0,
+      "car": 1,
+      "train": 2
+    },
+    "features": {
+      "default_window_seconds": 60,
+      "default_step_seconds": 30,
+      "context_windows_seconds": [
+        10,
+        30,
+        60
+      ],
+      "sensors": {
+        "accelerometer": [
+          "mean",
+          "standard_deviation",
+          "range",
+          "minimum",
+          "mean_absolute_deviation",
+          "mean_absolute_jerk",
+          "jerk_standard_deviation",
+          "spectral_energy",
+          "dominant_frequency_hz",
+          "spectral_entropy",
+          "mean_axis_correlation"
+        ],
+        "gyroscope": [
+          "mean",
+          "standard_deviation",
+          "range",
+          "minimum",
+          "mean_absolute_deviation",
+          "mean_absolute_jerk",
+          "jerk_standard_deviation",
+          "spectral_energy",
+          "dominant_frequency_hz",
+          "spectral_entropy",
+          "mean_axis_correlation"
+        ],
+        "magnetometer": [
+          "standard_deviation",
+          "range",
+          "minimum"
+        ]
+      }
+    },
+    "training": {
+      "random_seed": 42,
+      "optuna_trials": 45,
+      "model_families": [
+        "random_forest",
+        "xgboost",
+        "mlp"
+      ],
+      "calibration_fraction": 0.5,
+      "evaluation_strategy": "participant_nested_cv",
+      "participant_inner_folds": 5,
+      "weighting_strategy": "hierarchical",
+      "collector_domain_weight": 1.0,
+      "duration_balancing": "none",
+      "selection_metric": "minimum_class_recall",
+      "bootstrap_iterations": 2000
+    }
+  }
+]

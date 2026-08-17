@@ -554,9 +554,11 @@ breakdowns, mean-probability session-level predictions, and
 deterministic 95% intervals that resample whole participants rather than
 correlated windows.
 
-The local `recommended-trial-plans/` directory is gitignored and contains the
-generated staged experiments for the current collector snapshot. Generate any
-plan independently without replacing the canonical parameter file:
+The version-controlled `recommended-trial-plans/` directory contains the
+generated staged experiments for the current collector snapshot. Every plan
+uses descriptive `run_name` values for quick identification in logs, MLflow,
+and downloaded result summaries. Generate any plan independently without
+replacing the canonical parameter file:
 
 ```powershell
 python .\scripts\generate-trials.py `
