@@ -90,6 +90,38 @@ def render_table(rows: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
+def latex_escape(value: str) -> str:
+    replacements = {
+        "&": r"\&",
+        "%": r"\%",
+        "$": r"\$",
+        "#": r"\#",
+        "_": r"\_",
+        "{": r"\{",
+        "}": r"\}",
+        "~": r"\textasciitilde{}",
+        "^": r"\textasciicircum{}",
+        "\\": r"\textbackslash{}",
+    }
+    return "".join(replacements.get(character, character) for character in value)
+
+
+def render_latex_table(rows: list[list[str]]) -> str:
+    columns = "l" + "r" * (len(rows[0]) - 1)
+    lines = [
+        rf"\begin{{tabular}}{{{columns}}}",
+        r"\hline",
+    ]
+    for index, row in enumerate(rows):
+        if index > 1 and row[0] == "Total":
+            lines.append(r"\hline")
+        lines.append(" & ".join(latex_escape(value) for value in row) + r" \\")
+        if index == 0:
+            lines.append(r"\hline")
+    lines.extend((r"\hline", r"\end{tabular}"))
+    return "\n".join(lines)
+
+
 def load_snapshot(path: Path, run_id: str) -> list[dict[str, Any]]:
     snapshot = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(snapshot, dict) or snapshot.get("schema_version") != 1:
@@ -240,6 +272,8 @@ def render_report(
     run_id: str,
     sessions: list[dict[str, Any]],
     snapshot_source: str,
+    *,
+    latex: bool = False,
 ) -> str:
     known_durations = sum(duration_seconds(session) is not None for session in sessions)
     summary = [
@@ -250,13 +284,21 @@ def render_report(
         ["Session ID digest", session_id_digest(sessions)],
         ["Sessions with duration", str(known_durations)],
     ]
-    return "\n\n".join(
+    tables = (
+        ("Collector Snapshot Summary", summary),
+        ("Transport Mode Summary", build_mode_rows(sessions)),
         (
-            "Collector Snapshot Summary\n" + render_table(summary),
-            "Transport Mode Summary\n" + render_table(build_mode_rows(sessions)),
-            "Total Uploaded Session Duration vs Participants\n"
-            + render_table(build_participant_duration_rows(sessions)),
+            "Total Uploaded Session Duration vs Participants",
+            build_participant_duration_rows(sessions),
+        ),
+    )
+    if latex:
+        return "\n\n".join(
+            rf"\subsection*{{{latex_escape(title)}}}\n{render_latex_table(rows)}"
+            for title, rows in tables
         )
+    return "\n\n".join(
+        title + "\n" + render_table(rows) for title, rows in tables
     )
 
 
@@ -269,6 +311,11 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("run_id")
     parser.add_argument("--results-root", type=Path)
+    parser.add_argument(
+        "--latex",
+        action="store_true",
+        help="Print the report tables as LaTeX tabular environments.",
+    )
     parser.add_argument(
         "--sessions-dir",
         type=Path,
@@ -310,7 +357,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: {error}", file=sys.stderr)
         return 1
 
-    print(render_report(args.run_id, sessions, source))
+    print(render_report(args.run_id, sessions, source, latex=args.latex))
     return 0
 
 

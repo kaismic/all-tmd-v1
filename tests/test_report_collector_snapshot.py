@@ -62,6 +62,46 @@ def test_main_reports_uploaded_snapshot_by_mode_and_participant(tmp_path, capsys
     assert "Total" in output and "00:03:00" in output
 
 
+def test_main_can_render_report_as_latex(tmp_path, capsys):
+    sessions = [
+        {
+            "session_id": "session_one",
+            "participant_id": "participant_001",
+            "vehicle_type": "light_rail",
+            "duration_seconds": 60,
+            "sample_count": 120,
+        }
+    ]
+    snapshot_path = tmp_path / "run-1" / "run" / "collector-snapshot.json"
+    snapshot_path.parent.mkdir(parents=True)
+    snapshot_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "run_id": "run-1",
+                "session_count": 1,
+                "session_id_digest": MODULE.session_id_digest(sessions),
+                "sessions": sessions,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    result = MODULE.main(
+        ["run-1", "--results-root", str(tmp_path), "--latex"]
+    )
+
+    output = capsys.readouterr().out
+    assert result == 0
+    assert output.count(r"\begin{tabular}") == 3
+    assert output.count(r"\end{tabular}") == 3
+    assert r"\subsection*{Transport Mode Summary}" in output
+    assert r"Mode & Sessions & Participants & Duration & Samples \\" in output
+    assert r"light\_rail & 1 & 1 & 00:01:00 & 120 \\" in output
+    assert r"participant\_001 & 00:01:00 & 00:01:00 \\" in output
+    assert "Mode  Sessions" not in output
+
+
 def test_main_reconstructs_legacy_run_from_log_and_sidecars(tmp_path, capsys):
     log_path = tmp_path / "legacy-run" / "run" / "run.log"
     log_path.parent.mkdir(parents=True)
