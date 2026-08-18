@@ -30,6 +30,10 @@ $gitCommit = (& git -c "safe.directory=$($projectRoot.Replace('\', '/'))" `
 $gitRepository = (& git -c "safe.directory=$($projectRoot.Replace('\', '/'))" `
     -C $projectRoot remote get-url origin).Trim()
 if ($LASTEXITCODE -ne 0) { throw "Could not resolve the Git commit and repository." }
+Assert-AllTmdGitCommitAvailable `
+    -ProjectRoot $projectRoot `
+    -Repository $gitRepository `
+    -Commit $gitCommit
 
 $modeValue = $Mode.ToLowerInvariant()
 if (-not $RunId) {

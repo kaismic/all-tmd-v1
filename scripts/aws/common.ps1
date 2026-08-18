@@ -35,6 +35,45 @@ function Invoke-AllTmdAws {
     return $output
 }
 
+function Assert-AllTmdGitCommitAvailable {
+    param(
+        [Parameter(Mandatory = $true)][string]$ProjectRoot,
+        [Parameter(Mandatory = $true)][string]$Repository,
+        [Parameter(Mandatory = $true)][string]$Commit
+    )
+    if (-not (Get-Command git -ErrorAction SilentlyContinue)) {
+        throw "Git was not found on PATH."
+    }
+    if (-not $Repository.Trim()) {
+        throw "The run manifest does not specify a Git repository."
+    }
+    if ($Commit -notmatch '^[0-9a-f]{40}$') {
+        throw "The run manifest contains an invalid Git commit."
+    }
+
+    $safeProjectRoot = $ProjectRoot.Replace('\', '/')
+    $previousErrorActionPreference = $ErrorActionPreference
+    try {
+        # A dry-run asks the remote for the exact object without changing the
+        # local checkout or refs. This catches clean but unpushed commits.
+        $ErrorActionPreference = "Continue"
+        $fetchOutput = @(& git -c "safe.directory=$safeProjectRoot" `
+            -C $ProjectRoot fetch --dry-run --depth 1 -- `
+            $Repository $Commit 2>&1)
+        $fetchExitCode = $LASTEXITCODE
+    }
+    finally {
+        $ErrorActionPreference = $previousErrorActionPreference
+    }
+    if ($fetchExitCode -ne 0) {
+        $detail = ($fetchOutput | Out-String).Trim()
+        if ($detail) {
+            Write-Warning $detail
+        }
+        throw "Git commit $Commit is not available from the run repository. Push it before preparing or starting an AWS run."
+    }
+}
+
 function Get-AllTmdStackOutputs {
     param([Parameter(Mandatory = $true)][string]$StackName)
     $json = Invoke-AllTmdAws -Arguments @(

@@ -28,6 +28,19 @@ def test_ssm_wait_detects_an_externally_stopped_instance():
     assert "It may have been stopped externally." in common
 
 
+def test_aws_run_scripts_reject_a_commit_missing_from_the_remote():
+    common = (AWS_SCRIPTS / "common.ps1").read_text(encoding="utf-8")
+    preparer = (AWS_SCRIPTS / "prepare-run.ps1").read_text(encoding="utf-8")
+    launcher = (AWS_SCRIPTS / "start-run.ps1").read_text(encoding="utf-8")
+
+    assert "function Assert-AllTmdGitCommitAvailable" in common
+    assert "fetch --dry-run --depth 1" in common
+    assert "Push it before preparing or starting an AWS run." in common
+    assert "Assert-AllTmdGitCommitAvailable" in preparer
+    assert '"s3", "cp", $manifestUri, "-"' in launcher
+    assert "Assert-AllTmdGitCommitAvailable" in launcher
+
+
 def test_cloud_runner_syncs_collector_backend_directly():
     runner = (AWS_SCRIPTS / "remote" / "run-trials-cloud.sh").read_text(
         encoding="utf-8"

@@ -60,7 +60,9 @@ Install the AWS CLI and Session Manager plugin, authenticate an AWS profile,
 and commit and push the exact All-TMD code that will run. The remote worker
 checks out the full Git SHA recorded in each run bundle. The default preparation
 command refuses a dirty worktree to prevent a local-only code revision from
-being mistaken for the remote revision.
+being mistaken for the remote revision. Both `prepare-run.ps1` and
+`start-run.ps1` verify that the exact commit can be fetched from the recorded
+repository, and stop with a push-first error before starting EC2 when it cannot.
 
 Deploy the collector backend first, then deploy this stack with the email
 address that should receive the USD 50 monthly EC2 budget alert. The deploy

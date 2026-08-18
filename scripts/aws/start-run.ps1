@@ -12,16 +12,27 @@ if ($RunId -notmatch '^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$') {
 }
 . (Join-Path $PSScriptRoot "common.ps1")
 Initialize-AwsContext -Region $Region -Profile $Profile
+$projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $outputs = Get-AllTmdStackOutputs -StackName $StackName
 $instanceId = $outputs.InstanceId
 $bucket = $outputs.BucketName
 
-Invoke-AllTmdAws -Arguments @(
-    "s3api", "head-object",
-    "--bucket", $bucket,
-    "--key", "all-tmd-v1/config/$RunId/run-manifest.json",
-    "--output", "json"
-) | Out-Null
+$manifestUri = "s3://$bucket/all-tmd-v1/config/$RunId/run-manifest.json"
+$manifestJson = Invoke-AllTmdAws -Arguments @("s3", "cp", $manifestUri, "-")
+try {
+    $manifest = ($manifestJson -join "`n") | ConvertFrom-Json
+}
+catch {
+    throw "Run $RunId has an invalid run manifest in S3."
+}
+if ($manifest.run_id -ne $RunId) {
+    throw "Run manifest ID '$($manifest.run_id)' does not match requested run '$RunId'."
+}
+Assert-AllTmdGitCommitAvailable `
+    -ProjectRoot $projectRoot `
+    -Repository ([string]$manifest.git_repository) `
+    -Commit ([string]$manifest.git_commit)
+
 $state = Get-AllTmdEc2InstanceState -InstanceId $instanceId
 if ($state -eq "stopped") {
     Invoke-AllTmdAws -Arguments @(
