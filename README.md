@@ -202,6 +202,19 @@ The other accepted selectors are `collector_holdout.accuracy`,
 `collector_holdout.minimum_class_recall`. The script reads canonical trial reports beneath
 `aws-results/<run-id>/work` and excludes duplicate MLflow artifact copies.
 
+Export collector-holdout recall for every trial and transport mode in one
+downloaded run as a LaTeX `tabular` table:
+
+```powershell
+python .\scripts\export-recall-table.py <run-id>
+```
+
+Rows follow the trial index, transport-mode columns are sorted by name, and
+LaTeX-special characters in run and mode names are escaped. Values use four
+decimal places by default; pass `--precision <digits>` to change this. If a
+trial does not contain a mode found in another trial, its table cell contains
+`--`.
+
 Compare the collector-holdout confusion matrices across all downloaded trial
 results by true transport label, limiting the output to the top-ranked trials:
 
