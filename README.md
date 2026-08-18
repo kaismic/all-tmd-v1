@@ -165,8 +165,9 @@ python .\scripts\report-collector-snapshot.py <run-id>
 The report includes the number of sessions, total sample and uploaded-duration
 figures by transport mode, and uploaded duration by participant and mode.
 Durations use `HH:MM:SS`, including zero-valued fields (for example,
-`52:35:00`). Pass `--latex` to print all three tables as LaTeX `tabular`
-environments, with special characters in labels and values escaped:
+`52:35:00`). Pass `--latex` to print all three tables as left-aligned LaTeX
+`tabular` environments with captions and with special characters in labels and
+values escaped:
 
 ```powershell
 python .\scripts\report-collector-snapshot.py <run-id> --latex

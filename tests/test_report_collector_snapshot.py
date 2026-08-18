@@ -95,7 +95,9 @@ def test_main_can_render_report_as_latex(tmp_path, capsys):
     assert result == 0
     assert output.count(r"\begin{tabular}") == 3
     assert output.count(r"\end{tabular}") == 3
-    assert r"\subsection*{Transport Mode Summary}" in output
+    assert r"\caption{Transport Mode Summary}" in output
+    assert r"\begin{tabular}{lllll}" in output
+    assert r"\subsection*" not in output
     assert r"Mode & Sessions & Participants & Duration & Samples \\" in output
     assert r"light\_rail & 1 & 1 & 00:01:00 & 120 \\" in output
     assert r"participant\_001 & 00:01:00 & 00:01:00 \\" in output

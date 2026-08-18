@@ -107,7 +107,7 @@ def latex_escape(value: str) -> str:
 
 
 def render_latex_table(rows: list[list[str]]) -> str:
-    columns = "l" + "r" * (len(rows[0]) - 1)
+    columns = "l" * len(rows[0])
     lines = [
         rf"\begin{{tabular}}{{{columns}}}",
         r"\hline",
@@ -294,7 +294,7 @@ def render_report(
     )
     if latex:
         return "\n\n".join(
-            rf"\subsection*{{{latex_escape(title)}}}\n{render_latex_table(rows)}"
+            rf"\caption{{{latex_escape(title)}}}\n{render_latex_table(rows)}"
             for title, rows in tables
         )
     return "\n\n".join(
