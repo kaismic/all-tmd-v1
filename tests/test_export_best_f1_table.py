@@ -18,6 +18,8 @@ def _write_metrics(
     download_id: str,
     run_id: str,
     macro_f1: float,
+    accuracy: float,
+    balanced_accuracy: float,
     mode_f1: dict[str, float],
 ) -> None:
     metrics_dir = (
@@ -33,6 +35,8 @@ def _write_metrics(
     metrics = {
         "collector_holdout": {
             "macro_f1": macro_f1,
+            "accuracy": accuracy,
+            "balanced_accuracy": balanced_accuracy,
             "classification_report": {
                 **{
                     mode: {"f1-score": f1_score}
@@ -55,6 +59,8 @@ def test_main_prints_top_three_unique_trials_across_downloads(tmp_path, capsys):
         download_id="download-one",
         run_id="a" * 32,
         macro_f1=0.81,
+        accuracy=0.96,
+        balanced_accuracy=0.82,
         mode_f1={"bus": 0.71, "car": 0.82, "train": 0.90},
     )
     _write_metrics(
@@ -62,6 +68,8 @@ def test_main_prints_top_three_unique_trials_across_downloads(tmp_path, capsys):
         download_id="download-one",
         run_id="b" * 32,
         macro_f1=0.94,
+        accuracy=0.91,
+        balanced_accuracy=0.92,
         mode_f1={"bus": 0.93, "car": 0.94, "train": 0.95},
     )
     _write_metrics(
@@ -69,6 +77,8 @@ def test_main_prints_top_three_unique_trials_across_downloads(tmp_path, capsys):
         download_id="download-two",
         run_id="c" * 32,
         macro_f1=0.90,
+        accuracy=0.93,
+        balanced_accuracy=0.97,
         mode_f1={"bus": 0.89, "car": 0.90, "train": 0.91},
     )
     _write_metrics(
@@ -76,6 +86,8 @@ def test_main_prints_top_three_unique_trials_across_downloads(tmp_path, capsys):
         download_id="download-two",
         run_id="d" * 32,
         macro_f1=0.92,
+        accuracy=0.95,
+        balanced_accuracy=0.90,
         mode_f1={"bus": 0.91, "car": 0.92, "train": 0.93},
     )
     _write_metrics(
@@ -83,6 +95,8 @@ def test_main_prints_top_three_unique_trials_across_downloads(tmp_path, capsys):
         download_id="download-two",
         run_id="b" * 32,
         macro_f1=0.94,
+        accuracy=0.91,
+        balanced_accuracy=0.92,
         mode_f1={"bus": 0.93, "car": 0.94, "train": 0.95},
     )
 
@@ -100,6 +114,28 @@ def test_main_prints_top_three_unique_trials_across_downloads(tmp_path, capsys):
         f"    {'c' * 32} & 0.8900 & 0.9000 & 0.9100 & 0.9000 \\\\\n"
         "    \\hline\n"
         "\\end{tabular}\n"
+        "\n"
+        "\\caption{Best Accuracy}\n"
+        "\\begin{tabular}{c|ccc|c}\n"
+        "    \\hline\n"
+        "    Run ID & bus & car & train & accuracy \\\\\n"
+        "    \\hline\n"
+        f"    {'a' * 32} & 0.7100 & 0.8200 & 0.9000 & 0.9600 \\\\\n"
+        f"    {'d' * 32} & 0.9100 & 0.9200 & 0.9300 & 0.9500 \\\\\n"
+        f"    {'c' * 32} & 0.8900 & 0.9000 & 0.9100 & 0.9300 \\\\\n"
+        "    \\hline\n"
+        "\\end{tabular}\n"
+        "\n"
+        "\\caption{Best Balanced Accuracy}\n"
+        "\\begin{tabular}{c|ccc|c}\n"
+        "    \\hline\n"
+        "    Run ID & bus & car & train & balanced accuracy \\\\\n"
+        "    \\hline\n"
+        f"    {'c' * 32} & 0.8900 & 0.9000 & 0.9100 & 0.9700 \\\\\n"
+        f"    {'b' * 32} & 0.9300 & 0.9400 & 0.9500 & 0.9200 \\\\\n"
+        f"    {'d' * 32} & 0.9100 & 0.9200 & 0.9300 & 0.9000 \\\\\n"
+        "    \\hline\n"
+        "\\end{tabular}\n"
     )
 
 
@@ -109,6 +145,8 @@ def test_collect_best_trials_rejects_conflicting_duplicate_run(tmp_path):
         download_id="download-one",
         run_id="a" * 32,
         macro_f1=0.8,
+        accuracy=0.8,
+        balanced_accuracy=0.8,
         mode_f1={"bus": 0.8},
     )
     _write_metrics(
@@ -116,11 +154,13 @@ def test_collect_best_trials_rejects_conflicting_duplicate_run(tmp_path):
         download_id="download-two",
         run_id="a" * 32,
         macro_f1=0.9,
+        accuracy=0.9,
+        balanced_accuracy=0.9,
         mode_f1={"bus": 0.9},
     )
 
     try:
-        MODULE.collect_best_trials(tmp_path, 3)
+        MODULE.collect_trials(tmp_path)
     except ValueError as error:
         assert "conflicting metrics" in str(error)
     else:
