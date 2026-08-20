@@ -210,6 +210,18 @@ The other accepted selectors are `collector_holdout.accuracy`,
 `collector_holdout.minimum_class_recall`. The script reads canonical trial reports beneath
 `aws-results/<run-id>/work` and excludes duplicate MLflow artifact copies.
 
+Export the top three trials by collector-holdout macro F1 across every
+downloaded run as a LaTeX table, including each transport mode's F1 score:
+
+```powershell
+python .\scripts\export-best-f1-table.py
+```
+
+The table uses MLflow run IDs, sorts transport-mode columns by name, and prints
+four decimal places. Duplicate MLflow run IDs present in multiple downloads are
+included once. Use `--limit <count>` or `--precision <digits>` to override the
+defaults.
+
 Export collector-holdout recall for every trial and transport mode in one
 downloaded run as a LaTeX `tabular` table:
 
