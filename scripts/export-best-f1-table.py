@@ -255,8 +255,11 @@ def render_latex_table(
     for trial in trials:
         values = [
             (
-                f"{trial.mode_scores[mode].f1:.{precision}f}, "
+                rf"\textcolor{{red}}{{"
+                f"{trial.mode_scores[mode].f1:.{precision}f}"
+                rf"}}, \textcolor{{blue}}{{"
                 f"{trial.mode_scores[mode].recall:.{precision}f}"
+                "}"
             )
             if mode in trial.mode_scores
             else "--"
@@ -340,7 +343,8 @@ def main(
         for metric in RANKING_METRICS
     ]
     print(
-        "Individual transport mode cell values: F1-Score, Recall\n\n"
+        r"Individual transport mode cell values: \textcolor{red}{F1-Score}, "
+        "\\textcolor{blue}{Recall}\n\n"
         + "\n\n".join(tables)
     )
     return 0

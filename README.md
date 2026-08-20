@@ -219,7 +219,8 @@ python .\scripts\export-best-f1-table.py
 ```
 
 The tables use MLflow run IDs, sort transport-mode columns by name, and print
-four decimal places. Each transport-mode cell contains `F1-score, recall`.
+four decimal places. Each transport-mode cell contains a red F1 score followed
+by a blue recall and requires `\usepackage{xcolor}` in the LaTeX preamble.
 Trials are ranked independently by macro F1, overall accuracy, and balanced
 accuracy. Every table uses `average` as its final column heading and is followed
 by a paragraph with centered equations that define the table's ranking value.

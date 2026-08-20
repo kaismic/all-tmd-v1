@@ -115,7 +115,8 @@ def test_main_prints_top_three_unique_trials_across_downloads(tmp_path, capsys):
     output = capsys.readouterr().out
     sections = output.rstrip().split("\n\n")
     assert sections[0] == (
-        "Individual transport mode cell values: F1-Score, Recall"
+        "Individual transport mode cell values: "
+        "\\textcolor{red}{F1-Score}, \\textcolor{blue}{Recall}"
     )
     assert len(sections) == 7
 
@@ -131,8 +132,10 @@ def test_main_prints_top_three_unique_trials_across_downloads(tmp_path, capsys):
     assert "\\caption{Best Macro F1 Score}" in f1_table
     assert "Run ID & bus & car & train & average" in f1_table
     assert (
-        f"{'b' * 32} & 0.9300, 0.9400 & 0.9400, 0.9500 & "
-        "0.9500, 0.9600 & 0.9400"
+        f"{'b' * 32} & \\textcolor{{red}}{{0.9300}}, "
+        "\\textcolor{blue}{0.9400} & \\textcolor{red}{0.9400}, "
+        "\\textcolor{blue}{0.9500} & \\textcolor{red}{0.9500}, "
+        "\\textcolor{blue}{0.9600} & 0.9400"
     ) in f1_table
     assert f1_table.endswith("    \\end{tabular}\n\\end{table}")
     assert f1_table.index("b" * 32) < f1_table.index("d" * 32)
