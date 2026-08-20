@@ -22,8 +22,8 @@ class RankingMetric:
 
 
 RANKING_METRICS = (
-    RankingMetric("macro_f1", "Best F1 Score", "average"),
-    RankingMetric("accuracy", "Best Accuracy", "accuracy"),
+    RankingMetric("macro_f1", "Best Macro F1 Score", "macro F1"),
+    RankingMetric("accuracy", "Best Overall Accuracy", "overall accuracy"),
     RankingMetric(
         "balanced_accuracy",
         "Best Balanced Accuracy",
@@ -35,7 +35,7 @@ RANKING_METRICS = (
 @dataclass(frozen=True)
 class ModeScores:
     f1: float
-    accuracy: float
+    recall: float
 
 
 @dataclass(frozen=True)
@@ -111,7 +111,7 @@ def _read_trial_scores(metrics_path: Path) -> TrialScores:
                 f"collector_holdout.classification_report.{mode}.f1-score",
                 metrics_path,
             ),
-            accuracy=_score(
+            recall=_score(
                 mode_report.get("recall"),
                 f"collector_holdout.classification_report.{mode}.recall",
                 metrics_path,
@@ -208,7 +208,7 @@ def render_latex_table(
         values = [
             (
                 f"{trial.mode_scores[mode].f1:.{precision}f}, "
-                f"{trial.mode_scores[mode].accuracy:.{precision}f}"
+                f"{trial.mode_scores[mode].recall:.{precision}f}"
             )
             if mode in trial.mode_scores
             else "--"
@@ -292,7 +292,7 @@ def main(
         for metric in RANKING_METRICS
     ]
     print(
-        "Individual transport mode cell values: F1-Score, Accuracy\n\n"
+        "Individual transport mode cell values: F1-Score, Recall\n\n"
         + "\n\n".join(tables)
     )
     return 0
