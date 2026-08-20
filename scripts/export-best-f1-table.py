@@ -18,17 +18,12 @@ SUMMARY_REPORT_KEYS = {"accuracy", "macro avg", "weighted avg"}
 class RankingMetric:
     key: str
     caption: str
-    column_heading: str
 
 
 RANKING_METRICS = (
-    RankingMetric("macro_f1", "Best Macro F1 Score", "macro F1"),
-    RankingMetric("accuracy", "Best Overall Accuracy", "overall accuracy"),
-    RankingMetric(
-        "balanced_accuracy",
-        "Best Balanced Accuracy",
-        "balanced accuracy",
-    ),
+    RankingMetric("macro_f1", "Best Macro F1 Score"),
+    RankingMetric("accuracy", "Best Overall Accuracy"),
+    RankingMetric("balanced_accuracy", "Best Balanced Accuracy"),
 )
 
 
@@ -184,6 +179,60 @@ def _latex_escape(value: str) -> str:
     return "".join(replacements.get(character, character) for character in value)
 
 
+def render_metric_description(metric: RankingMetric) -> str:
+    if metric.key == "macro_f1":
+        return "\n".join(
+            (
+                r"\paragraph{Macro F1 calculation.}",
+                r"For transport mode \(c\), precision \(P_c\), recall \(R_c\), "
+                r"and F1 score \(F1_c\) are calculated as follows:",
+                r"\[",
+                r"    P_c = \frac{TP_c}{TP_c + FP_c}, \qquad",
+                r"    R_c = \frac{TP_c}{TP_c + FN_c}, \qquad",
+                r"    F1_c = \frac{2P_cR_c}{P_c + R_c}.",
+                r"\]",
+                r"With \(K\) transport modes, the table's average is the "
+                r"unweighted macro F1:",
+                r"\[",
+                r"    \mathrm{Macro\ F1} = \frac{1}{K} "
+                r"\sum_{c=1}^{K} F1_c.",
+                r"\]",
+            )
+        )
+    if metric.key == "accuracy":
+        return "\n".join(
+            (
+                r"\paragraph{Overall accuracy calculation.}",
+                r"Overall accuracy is the fraction of all samples classified "
+                r"correctly. Equivalently, it is the support-weighted mean of "
+                r"the per-mode recalls:",
+                r"\[",
+                r"    \mathrm{Accuracy} = \frac{\sum_{c=1}^{K} TP_c}{N} "
+                r"= \frac{\sum_{c=1}^{K} n_cR_c}"
+                r"{\sum_{c=1}^{K} n_c},",
+                r"\]",
+                r"where \(n_c\) is the support for mode \(c\) and \(N\) is the "
+                r"total sample count. The table's average contains this overall "
+                r"accuracy.",
+            )
+        )
+    if metric.key == "balanced_accuracy":
+        return "\n".join(
+            (
+                r"\paragraph{Balanced accuracy calculation.}",
+                r"Balanced accuracy gives every transport mode equal weight by "
+                r"taking the unweighted mean of the per-mode recalls:",
+                r"\[",
+                r"    \mathrm{Balanced\ Accuracy} = \frac{1}{K} "
+                r"\sum_{c=1}^{K} R_c.",
+                r"\]",
+                r"The table's average therefore does not depend on differences "
+                r"in class support.",
+            )
+        )
+    raise ValueError(f"unsupported ranking metric: {metric.key}")
+
+
 def render_latex_table(
     trials: Sequence[TrialScores],
     metric: RankingMetric,
@@ -200,8 +249,7 @@ def render_latex_table(
         r"        \hline",
         "        Run ID & "
         + " & ".join(_latex_escape(mode) for mode in modes)
-        + f" & {_latex_escape(metric.column_heading)} "
-        + r"\\",
+        + r" & average \\",
         r"        \hline",
     ]
     for trial in trials:
@@ -228,7 +276,7 @@ def render_latex_table(
             r"\end{table}",
         )
     )
-    return "\n".join(lines)
+    return "\n".join(lines) + "\n\n" + render_metric_description(metric)
 
 
 def _positive_integer(value: str) -> int:

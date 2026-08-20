@@ -221,9 +221,10 @@ python .\scripts\export-best-f1-table.py
 The tables use MLflow run IDs, sort transport-mode columns by name, and print
 four decimal places. Each transport-mode cell contains `F1-score, recall`.
 Trials are ranked independently by macro F1, overall accuracy, and balanced
-accuracy; the final column names the ranking metric. Duplicate MLflow run IDs
-present in multiple downloads are included once. Use `--limit <count>` or
-`--precision <digits>` to override the defaults.
+accuracy. Every table uses `average` as its final column heading and is followed
+by a paragraph with centered equations that define the table's ranking value.
+Duplicate MLflow run IDs present in multiple downloads are included once. Use
+`--limit <count>` or `--precision <digits>` to override the defaults.
 
 Export collector-holdout recall for every trial and transport mode in one
 downloaded run as a LaTeX `tabular` table:

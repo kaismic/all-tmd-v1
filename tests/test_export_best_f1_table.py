@@ -117,12 +117,19 @@ def test_main_prints_top_three_unique_trials_across_downloads(tmp_path, capsys):
     assert sections[0] == (
         "Individual transport mode cell values: F1-Score, Recall"
     )
-    assert len(sections) == 4
+    assert len(sections) == 7
 
-    f1_table, accuracy_table, balanced_accuracy_table = sections[1:]
+    (
+        f1_table,
+        f1_description,
+        accuracy_table,
+        accuracy_description,
+        balanced_accuracy_table,
+        balanced_accuracy_description,
+    ) = sections[1:]
     assert "\\begin{table}[H]\n    \\centering\n" in f1_table
     assert "\\caption{Best Macro F1 Score}" in f1_table
-    assert "Run ID & bus & car & train & macro F1" in f1_table
+    assert "Run ID & bus & car & train & average" in f1_table
     assert (
         f"{'b' * 32} & 0.9300, 0.9400 & 0.9400, 0.9500 & "
         "0.9500, 0.9600 & 0.9400"
@@ -130,23 +137,35 @@ def test_main_prints_top_three_unique_trials_across_downloads(tmp_path, capsys):
     assert f1_table.endswith("    \\end{tabular}\n\\end{table}")
     assert f1_table.index("b" * 32) < f1_table.index("d" * 32)
     assert f1_table.index("d" * 32) < f1_table.index("c" * 32)
+    assert f1_description.startswith("\\paragraph{Macro F1 calculation.}")
+    assert r"F1_c = \frac{2P_cR_c}{P_c + R_c}" in f1_description
+    assert r"\mathrm{Macro\ F1} = \frac{1}{K}" in f1_description
 
     assert "\\caption{Best Overall Accuracy}" in accuracy_table
-    assert "Run ID & bus & car & train & overall accuracy" in accuracy_table
+    assert "Run ID & bus & car & train & average" in accuracy_table
     assert accuracy_table.index("a" * 32) < accuracy_table.index("d" * 32)
     assert accuracy_table.index("d" * 32) < accuracy_table.index("c" * 32)
+    assert accuracy_description.startswith(
+        "\\paragraph{Overall accuracy calculation.}"
+    )
+    assert r"\frac{\sum_{c=1}^{K} TP_c}{N}" in accuracy_description
+    assert r"\sum_{c=1}^{K} n_cR_c" in accuracy_description
 
     assert "\\caption{Best Balanced Accuracy}" in balanced_accuracy_table
-    assert (
-        "Run ID & bus & car & train & balanced accuracy"
-        in balanced_accuracy_table
-    )
+    assert "Run ID & bus & car & train & average" in balanced_accuracy_table
     assert balanced_accuracy_table.index("c" * 32) < balanced_accuracy_table.index(
         "b" * 32
     )
     assert balanced_accuracy_table.index(
         "b" * 32
     ) < balanced_accuracy_table.index("d" * 32)
+    assert balanced_accuracy_description.startswith(
+        "\\paragraph{Balanced accuracy calculation.}"
+    )
+    assert (
+        r"\mathrm{Balanced\ Accuracy} = \frac{1}{K}"
+        in balanced_accuracy_description
+    )
 
 
 def test_collect_best_trials_rejects_conflicting_duplicate_run(tmp_path):
