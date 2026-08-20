@@ -21,6 +21,7 @@ def _write_metrics(
     accuracy: float,
     balanced_accuracy: float,
     mode_f1: dict[str, float],
+    mode_accuracy: dict[str, float],
 ) -> None:
     metrics_dir = (
         results_root
@@ -39,7 +40,10 @@ def _write_metrics(
             "balanced_accuracy": balanced_accuracy,
             "classification_report": {
                 **{
-                    mode: {"f1-score": f1_score}
+                    mode: {
+                        "f1-score": f1_score,
+                        "recall": mode_accuracy[mode],
+                    }
                     for mode, f1_score in mode_f1.items()
                 },
                 "accuracy": 0.8,
@@ -62,6 +66,7 @@ def test_main_prints_top_three_unique_trials_across_downloads(tmp_path, capsys):
         accuracy=0.96,
         balanced_accuracy=0.82,
         mode_f1={"bus": 0.71, "car": 0.82, "train": 0.90},
+        mode_accuracy={"bus": 0.72, "car": 0.83, "train": 0.91},
     )
     _write_metrics(
         tmp_path,
@@ -71,6 +76,7 @@ def test_main_prints_top_three_unique_trials_across_downloads(tmp_path, capsys):
         accuracy=0.91,
         balanced_accuracy=0.92,
         mode_f1={"bus": 0.93, "car": 0.94, "train": 0.95},
+        mode_accuracy={"bus": 0.94, "car": 0.95, "train": 0.96},
     )
     _write_metrics(
         tmp_path,
@@ -80,6 +86,7 @@ def test_main_prints_top_three_unique_trials_across_downloads(tmp_path, capsys):
         accuracy=0.93,
         balanced_accuracy=0.97,
         mode_f1={"bus": 0.89, "car": 0.90, "train": 0.91},
+        mode_accuracy={"bus": 0.90, "car": 0.91, "train": 0.92},
     )
     _write_metrics(
         tmp_path,
@@ -89,6 +96,7 @@ def test_main_prints_top_three_unique_trials_across_downloads(tmp_path, capsys):
         accuracy=0.95,
         balanced_accuracy=0.90,
         mode_f1={"bus": 0.91, "car": 0.92, "train": 0.93},
+        mode_accuracy={"bus": 0.92, "car": 0.93, "train": 0.94},
     )
     _write_metrics(
         tmp_path,
@@ -98,45 +106,47 @@ def test_main_prints_top_three_unique_trials_across_downloads(tmp_path, capsys):
         accuracy=0.91,
         balanced_accuracy=0.92,
         mode_f1={"bus": 0.93, "car": 0.94, "train": 0.95},
+        mode_accuracy={"bus": 0.94, "car": 0.95, "train": 0.96},
     )
 
     exit_code = MODULE.main([], results_root=tmp_path)
 
     assert exit_code == 0
-    assert capsys.readouterr().out == (
-        "\\caption{Best F1 Score}\n"
-        "\\begin{tabular}{c|ccc|c}\n"
-        "    \\hline\n"
-        "    Run ID & bus & car & train & average \\\\\n"
-        "    \\hline\n"
-        f"    {'b' * 32} & 0.9300 & 0.9400 & 0.9500 & 0.9400 \\\\\n"
-        f"    {'d' * 32} & 0.9100 & 0.9200 & 0.9300 & 0.9200 \\\\\n"
-        f"    {'c' * 32} & 0.8900 & 0.9000 & 0.9100 & 0.9000 \\\\\n"
-        "    \\hline\n"
-        "\\end{tabular}\n"
-        "\n"
-        "\\caption{Best Accuracy}\n"
-        "\\begin{tabular}{c|ccc|c}\n"
-        "    \\hline\n"
-        "    Run ID & bus & car & train & accuracy \\\\\n"
-        "    \\hline\n"
-        f"    {'a' * 32} & 0.7100 & 0.8200 & 0.9000 & 0.9600 \\\\\n"
-        f"    {'d' * 32} & 0.9100 & 0.9200 & 0.9300 & 0.9500 \\\\\n"
-        f"    {'c' * 32} & 0.8900 & 0.9000 & 0.9100 & 0.9300 \\\\\n"
-        "    \\hline\n"
-        "\\end{tabular}\n"
-        "\n"
-        "\\caption{Best Balanced Accuracy}\n"
-        "\\begin{tabular}{c|ccc|c}\n"
-        "    \\hline\n"
-        "    Run ID & bus & car & train & balanced accuracy \\\\\n"
-        "    \\hline\n"
-        f"    {'c' * 32} & 0.8900 & 0.9000 & 0.9100 & 0.9700 \\\\\n"
-        f"    {'b' * 32} & 0.9300 & 0.9400 & 0.9500 & 0.9200 \\\\\n"
-        f"    {'d' * 32} & 0.9100 & 0.9200 & 0.9300 & 0.9000 \\\\\n"
-        "    \\hline\n"
-        "\\end{tabular}\n"
+    output = capsys.readouterr().out
+    sections = output.rstrip().split("\n\n")
+    assert sections[0] == (
+        "Individual transport mode cell values: F1-Score, Accuracy"
     )
+    assert len(sections) == 4
+
+    f1_table, accuracy_table, balanced_accuracy_table = sections[1:]
+    assert "\\begin{table}[H]\n    \\centering\n" in f1_table
+    assert "\\caption{Best F1 Score}" in f1_table
+    assert "Run ID & bus & car & train & average" in f1_table
+    assert (
+        f"{'b' * 32} & 0.9300, 0.9400 & 0.9400, 0.9500 & "
+        "0.9500, 0.9600 & 0.9400"
+    ) in f1_table
+    assert f1_table.endswith("    \\end{tabular}\n\\end{table}")
+    assert f1_table.index("b" * 32) < f1_table.index("d" * 32)
+    assert f1_table.index("d" * 32) < f1_table.index("c" * 32)
+
+    assert "\\caption{Best Accuracy}" in accuracy_table
+    assert "Run ID & bus & car & train & accuracy" in accuracy_table
+    assert accuracy_table.index("a" * 32) < accuracy_table.index("d" * 32)
+    assert accuracy_table.index("d" * 32) < accuracy_table.index("c" * 32)
+
+    assert "\\caption{Best Balanced Accuracy}" in balanced_accuracy_table
+    assert (
+        "Run ID & bus & car & train & balanced accuracy"
+        in balanced_accuracy_table
+    )
+    assert balanced_accuracy_table.index("c" * 32) < balanced_accuracy_table.index(
+        "b" * 32
+    )
+    assert balanced_accuracy_table.index(
+        "b" * 32
+    ) < balanced_accuracy_table.index("d" * 32)
 
 
 def test_collect_best_trials_rejects_conflicting_duplicate_run(tmp_path):
@@ -148,6 +158,7 @@ def test_collect_best_trials_rejects_conflicting_duplicate_run(tmp_path):
         accuracy=0.8,
         balanced_accuracy=0.8,
         mode_f1={"bus": 0.8},
+        mode_accuracy={"bus": 0.8},
     )
     _write_metrics(
         tmp_path,
@@ -157,6 +168,7 @@ def test_collect_best_trials_rejects_conflicting_duplicate_run(tmp_path):
         accuracy=0.9,
         balanced_accuracy=0.9,
         mode_f1={"bus": 0.9},
+        mode_accuracy={"bus": 0.9},
     )
 
     try:

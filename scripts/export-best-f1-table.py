@@ -33,10 +33,16 @@ RANKING_METRICS = (
 
 
 @dataclass(frozen=True)
+class ModeScores:
+    f1: float
+    accuracy: float
+
+
+@dataclass(frozen=True)
 class TrialScores:
     run_id: str
     ranking_values: dict[str, float]
-    mode_f1: dict[str, float]
+    mode_scores: dict[str, ModeScores]
     metrics_path: Path
 
 
@@ -90,7 +96,7 @@ def _read_trial_scores(metrics_path: Path) -> TrialScores:
         metrics_path,
     )
 
-    mode_f1: dict[str, float] = {}
+    mode_scores: dict[str, ModeScores] = {}
     for mode, mode_report_value in report.items():
         if mode in SUMMARY_REPORT_KEYS:
             continue
@@ -99,12 +105,19 @@ def _read_trial_scores(metrics_path: Path) -> TrialScores:
             f"classification report entry for {mode!r}",
             metrics_path,
         )
-        mode_f1[mode] = _score(
-            mode_report.get("f1-score"),
-            f"collector_holdout.classification_report.{mode}.f1-score",
-            metrics_path,
+        mode_scores[mode] = ModeScores(
+            f1=_score(
+                mode_report.get("f1-score"),
+                f"collector_holdout.classification_report.{mode}.f1-score",
+                metrics_path,
+            ),
+            accuracy=_score(
+                mode_report.get("recall"),
+                f"collector_holdout.classification_report.{mode}.recall",
+                metrics_path,
+            ),
         )
-    if not mode_f1:
+    if not mode_scores:
         raise ValueError(f"{metrics_path}: classification report has no transport modes")
 
     run_id = metrics_path.parent.parent.name
@@ -113,7 +126,7 @@ def _read_trial_scores(metrics_path: Path) -> TrialScores:
     return TrialScores(
         run_id=run_id,
         ranking_values=ranking_values,
-        mode_f1=mode_f1,
+        mode_scores=mode_scores,
         metrics_path=metrics_path,
     )
 
@@ -130,9 +143,9 @@ def collect_trials(results_root: Path) -> list[TrialScores]:
         trial = _read_trial_scores(metrics_path)
         existing = trials_by_run_id.get(trial.run_id)
         if existing is not None:
-            if (existing.ranking_values, existing.mode_f1) != (
+            if (existing.ranking_values, existing.mode_scores) != (
                 trial.ranking_values,
-                trial.mode_f1,
+                trial.mode_scores,
             ):
                 raise ValueError(
                     f"MLflow run {trial.run_id!r} has conflicting metrics in "
@@ -177,33 +190,44 @@ def render_latex_table(
     *,
     precision: int,
 ) -> str:
-    modes = sorted({mode for trial in trials for mode in trial.mode_f1})
+    modes = sorted({mode for trial in trials for mode in trial.mode_scores})
     columns = "c|" + "c" * len(modes) + "|c"
     lines = [
-        rf"\caption{{{metric.caption}}}",
-        rf"\begin{{tabular}}{{{columns}}}",
-        r"    \hline",
-        "    Run ID & "
+        r"\begin{table}[H]",
+        r"    \centering",
+        rf"    \caption{{{metric.caption}}}",
+        rf"    \begin{{tabular}}{{{columns}}}",
+        r"        \hline",
+        "        Run ID & "
         + " & ".join(_latex_escape(mode) for mode in modes)
         + f" & {_latex_escape(metric.column_heading)} "
         + r"\\",
-        r"    \hline",
+        r"        \hline",
     ]
     for trial in trials:
         values = [
-            f"{trial.mode_f1[mode]:.{precision}f}"
-            if mode in trial.mode_f1
+            (
+                f"{trial.mode_scores[mode].f1:.{precision}f}, "
+                f"{trial.mode_scores[mode].accuracy:.{precision}f}"
+            )
+            if mode in trial.mode_scores
             else "--"
             for mode in modes
         ]
         lines.append(
-            "    "
+            "        "
             + _latex_escape(trial.run_id)
             + " & "
             + " & ".join(values)
             + f" & {trial.ranking_values[metric.key]:.{precision}f} \\\\"
         )
-    lines.extend((r"    \hline", r"\end{tabular}"))
+    lines.extend(
+        (
+            r"        \hline",
+            r"    \end{tabular}",
+            r"\end{table}",
+        )
+    )
     return "\n".join(lines)
 
 
@@ -267,7 +291,10 @@ def main(
         )
         for metric in RANKING_METRICS
     ]
-    print("\n\n".join(tables))
+    print(
+        "Individual transport mode cell values: F1-Score, Accuracy\n\n"
+        + "\n\n".join(tables)
+    )
     return 0
 
 
