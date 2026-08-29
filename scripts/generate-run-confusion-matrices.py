@@ -12,9 +12,12 @@ from typing import Any, Sequence
 
 
 SUMMARY_REPORT_KEYS = {"accuracy", "macro avg", "weighted avg"}
-OUTPUT_RELATIVE_PATH = (
-    Path("evaluation") / "collector-holdout-confusion-matrix-normalized.png"
-)
+
+
+def output_relative_path(run_id: str) -> Path:
+    """Return the output artifact path containing the shortened run ID."""
+    filename = f"collector-holdout-confusion-matrix-normalized-{run_id[:7]}.png"
+    return Path("evaluation") / filename
 
 
 def find_run_artifacts(
@@ -139,7 +142,7 @@ def build_figure(
 def generate_image(artifacts_dir: Path, run_id: str) -> Path:
     """Generate the standard normalized matrix artifact for one run."""
     matrix, labels = read_confusion_matrix(artifacts_dir / "metrics.json")
-    output_path = artifacts_dir / OUTPUT_RELATIVE_PATH
+    output_path = artifacts_dir / output_relative_path(run_id)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     figure = build_figure(matrix, labels, run_id)
     try:

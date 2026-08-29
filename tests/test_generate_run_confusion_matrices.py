@@ -92,9 +92,12 @@ def test_main_generates_standard_artifact_and_reports_missing_run(
 
     exit_code = MODULE.main([run_id, "missing"], results_root=tmp_path)
 
-    output_path = artifacts_dir / MODULE.OUTPUT_RELATIVE_PATH
+    output_path = artifacts_dir / MODULE.output_relative_path(run_id)
     captured = capsys.readouterr()
     assert exit_code == 1
     assert output_path.is_file()
+    assert output_path.name == (
+        "collector-holdout-confusion-matrix-normalized-0c8015e.png"
+    )
     assert str(output_path) in captured.out
     assert "run ID not found: missing" in captured.err

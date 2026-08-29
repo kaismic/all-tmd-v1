@@ -262,12 +262,13 @@ python .\scripts\generate-run-confusion-matrices.py `
 ```
 
 The script searches `aws-results` for each exact run ID and writes the PNG to
-the run's standard `artifacts/evaluation/collector-holdout-confusion-matrix-normalized.png`
-path. Rows are normalized independently, zero-total rows remain zero, and the
-figure title is the first seven characters of the run ID followed by
-`(row normalized)`. Use `--results-root <path>` to search another download
-directory. If the same run ID exists in multiple downloads, each copy is
-regenerated.
+the run's `artifacts/evaluation` directory. The filename ends with the first
+seven characters of the run ID, for example
+`collector-holdout-confusion-matrix-normalized-e821edc.png`. Rows are
+normalized independently, zero-total rows remain zero, and the figure title is
+the same shortened run ID followed by `(row normalized)`. Use
+`--results-root <path>` to search another download directory. If the same run
+ID exists in multiple downloads, each copy is regenerated.
 
 View the downloaded MLflow database and artifacts locally with Docker:
 
