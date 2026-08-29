@@ -126,6 +126,31 @@ def test_main_generates_metric_and_limit_filename(tmp_path, capsys):
     assert str(output_path) in capsys.readouterr().out
 
 
+def test_main_uses_dedicated_results_subdirectory_by_default(tmp_path):
+    results_root = tmp_path / "aws-results"
+    _write_metrics(
+        results_root,
+        download_id="download-one",
+        run_id="abcdefg1234567890123456789012345",
+        accuracy=0.94,
+        macro_f1=0.92,
+        balanced_accuracy=0.91,
+    )
+
+    exit_code = MODULE.main(
+        ["collector_holdout.accuracy", "1"],
+        results_root=results_root,
+    )
+
+    output_path = (
+        results_root
+        / "top-metric-charts"
+        / "collector_holdout.accuracy-top-1.png"
+    )
+    assert exit_code == 0
+    assert output_path.is_file()
+
+
 def test_main_reports_when_no_downloaded_metrics_exist(tmp_path, capsys):
     exit_code = MODULE.main(
         ["collector_holdout.accuracy", "2"],

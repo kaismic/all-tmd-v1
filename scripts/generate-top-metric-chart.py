@@ -152,7 +152,9 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--output-dir",
         type=Path,
-        help="image destination (default: current directory)",
+        help=(
+            "image destination (default: <results-root>/top-metric-charts)"
+        ),
     )
     return parser
 
@@ -174,7 +176,11 @@ def main(
         raise ValueError("results_root and --results-root cannot both be supplied")
 
     if output_dir is None:
-        output_dir = args.output_dir if args.output_dir is not None else Path.cwd()
+        output_dir = (
+            args.output_dir
+            if args.output_dir is not None
+            else results_root / "top-metric-charts"
+        )
     elif args.output_dir is not None:
         raise ValueError("output_dir and --output-dir cannot both be supplied")
 

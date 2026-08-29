@@ -240,8 +240,9 @@ The accepted metrics are `collector_holdout.accuracy`,
 `collector_holdout.macro_f1`, and `collector_holdout.balanced_accuracy`. The
 script searches every download beneath `aws-results`, includes duplicate
 MLflow run IDs once, labels each bar with the first seven run-ID characters,
-and writes `<metric-name>-top-<n>.png` to the current directory. Use
-`--results-root` or `--output-dir` to override those locations.
+and writes `<metric-name>-top-<n>.png` beneath
+`aws-results/top-metric-charts`. Use `--results-root` or `--output-dir` to
+override those locations.
 
 Export collector-holdout recall for every trial and transport mode in one
 downloaded run as a LaTeX `tabular` table:
