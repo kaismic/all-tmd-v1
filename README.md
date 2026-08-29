@@ -252,6 +252,23 @@ The script normalizes the selected true-label row, ranks trials by its diagonal
 normalized predicted-value array with its label order, and support. MLflow's
 duplicate artifact copies are excluded from the comparison.
 
+Regenerate the row-normalized collector-holdout confusion-matrix image for one
+or more downloaded MLflow run IDs:
+
+```powershell
+python .\scripts\generate-run-confusion-matrices.py `
+  e821edccef3648d1be52848dd413f007 `
+  0c8015ecc7d541cf95db0b40c7a581e7
+```
+
+The script searches `aws-results` for each exact run ID and writes the PNG to
+the run's standard `artifacts/evaluation/collector-holdout-confusion-matrix-normalized.png`
+path. Rows are normalized independently, zero-total rows remain zero, and the
+figure title is the first seven characters of the run ID followed by
+`(row normalized)`. Use `--results-root <path>` to search another download
+directory. If the same run ID exists in multiple downloads, each copy is
+regenerated.
+
 View the downloaded MLflow database and artifacts locally with Docker:
 
 ```powershell
