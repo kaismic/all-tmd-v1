@@ -88,11 +88,11 @@ def test_main_generates_standard_artifact_and_reports_missing_run(
     tmp_path, capsys
 ):
     run_id = "0c8015ecc7d541cf95db0b40c7a581e7"
-    artifacts_dir = _write_artifacts(tmp_path, run_id)
+    _write_artifacts(tmp_path, run_id)
 
     exit_code = MODULE.main([run_id, "missing"], results_root=tmp_path)
 
-    output_path = artifacts_dir / MODULE.output_relative_path(run_id)
+    output_path = tmp_path / "confusion-matrices" / MODULE.output_filename(run_id)
     captured = capsys.readouterr()
     assert exit_code == 1
     assert output_path.is_file()
@@ -101,3 +101,17 @@ def test_main_generates_standard_artifact_and_reports_missing_run(
     )
     assert str(output_path) in captured.out
     assert "run ID not found: missing" in captured.err
+
+
+def test_main_accepts_a_custom_output_directory(tmp_path):
+    run_id = "e821edccef3648d1be52848dd413f007"
+    _write_artifacts(tmp_path, run_id)
+    output_dir = tmp_path / "collected-images"
+
+    exit_code = MODULE.main(
+        [run_id, "--output-dir", str(output_dir)],
+        results_root=tmp_path,
+    )
+
+    assert exit_code == 0
+    assert (output_dir / MODULE.output_filename(run_id)).is_file()

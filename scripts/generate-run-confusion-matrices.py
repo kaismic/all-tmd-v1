@@ -14,10 +14,9 @@ from typing import Any, Sequence
 SUMMARY_REPORT_KEYS = {"accuracy", "macro avg", "weighted avg"}
 
 
-def output_relative_path(run_id: str) -> Path:
-    """Return the output artifact path containing the shortened run ID."""
-    filename = f"collector-holdout-confusion-matrix-normalized-{run_id[:7]}.png"
-    return Path("evaluation") / filename
+def output_filename(run_id: str) -> str:
+    """Return the image filename containing the shortened run ID."""
+    return f"collector-holdout-confusion-matrix-normalized-{run_id[:7]}.png"
 
 
 def find_run_artifacts(
@@ -139,11 +138,11 @@ def build_figure(
     return figure
 
 
-def generate_image(artifacts_dir: Path, run_id: str) -> Path:
-    """Generate the standard normalized matrix artifact for one run."""
+def generate_image(artifacts_dir: Path, run_id: str, output_dir: Path) -> Path:
+    """Generate one normalized matrix image in the shared output directory."""
     matrix, labels = read_confusion_matrix(artifacts_dir / "metrics.json")
-    output_path = artifacts_dir / output_relative_path(run_id)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output_path = output_dir / output_filename(run_id)
     figure = build_figure(matrix, labels, run_id)
     try:
         figure.savefig(output_path)
@@ -164,6 +163,13 @@ def _build_parser() -> argparse.ArgumentParser:
         "--results-root",
         type=Path,
         help="Downloaded results root (default: repository aws-results)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        help=(
+            "Image destination (default: <results-root>/confusion-matrices)"
+        ),
     )
     return parser
 
@@ -187,6 +193,12 @@ def main(
         print(f"error: results directory does not exist: {results_root}", file=sys.stderr)
         return 1
 
+    output_dir = (
+        args.output_dir
+        if args.output_dir is not None
+        else results_root / "confusion-matrices"
+    )
+
     run_ids = list(dict.fromkeys(args.run_ids))
     matches = find_run_artifacts(results_root, run_ids)
     failed = False
@@ -196,14 +208,13 @@ def main(
             print(f"error: run ID not found: {run_id}", file=sys.stderr)
             failed = True
             continue
-        for artifacts_dir in artifact_dirs:
-            try:
-                output_path = generate_image(artifacts_dir, run_id)
-            except (OSError, ValueError) as error:
-                print(f"error: {error}", file=sys.stderr)
-                failed = True
-                continue
-            print(output_path)
+        try:
+            output_path = generate_image(artifact_dirs[0], run_id, output_dir)
+        except (OSError, ValueError) as error:
+            print(f"error: {error}", file=sys.stderr)
+            failed = True
+            continue
+        print(output_path)
 
     return 1 if failed else 0
 
