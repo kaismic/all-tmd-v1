@@ -227,6 +227,22 @@ by a paragraph with centered equations that define the table's ranking value.
 Duplicate MLflow run IDs present in multiple downloads are included once. Use
 `--limit <count>` or `--precision <digits>` to override the defaults.
 
+Generate a bar chart for the top downloaded MLflow runs by one collector
+holdout metric:
+
+```powershell
+python .\scripts\generate-top-metric-chart.py `
+  collector_holdout.macro_f1 `
+  10
+```
+
+The accepted metrics are `collector_holdout.accuracy`,
+`collector_holdout.macro_f1`, and `collector_holdout.balanced_accuracy`. The
+script searches every download beneath `aws-results`, includes duplicate
+MLflow run IDs once, labels each bar with the first seven run-ID characters,
+and writes `<metric-name>-top-<n>.png` to the current directory. Use
+`--results-root` or `--output-dir` to override those locations.
+
 Export collector-holdout recall for every trial and transport mode in one
 downloaded run as a LaTeX `tabular` table:
 
