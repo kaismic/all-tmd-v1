@@ -112,6 +112,7 @@ def build_figure(
     metric_name: str,
 ):
     """Build the top-run bar chart without requiring an interactive backend."""
+    from matplotlib import colormaps
     from matplotlib.backends.backend_agg import FigureCanvasAgg
     from matplotlib.figure import Figure
 
@@ -119,10 +120,11 @@ def build_figure(
     figure = Figure(figsize=(figure_width, 5.5))
     FigureCanvasAgg(figure)
     axis = figure.subplots()
+    palette = colormaps["viridis"].resampled(max(1, len(results)))
     bars = axis.bar(
         [result.run_id[:7] for result in results],
         [result.value for result in results],
-        color="#4C78A8",
+        color=[palette(index) for index in range(len(results))],
     )
     axis.set_title(METRIC_TITLES[metric_name])
     axis.set_xlabel("Run ID")

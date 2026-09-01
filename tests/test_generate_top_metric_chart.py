@@ -98,6 +98,7 @@ def test_build_figure_uses_short_run_ids_and_mapped_title():
             "7654321",
         ]
         assert [bar.get_height() for bar in axis.patches] == [0.93, 0.89]
+        assert len({bar.get_facecolor() for bar in axis.patches}) == 2
     finally:
         figure.clear()
 
