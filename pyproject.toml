@@ -22,8 +22,17 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+deployment = [
+  "onnx>=1.19.0",
+  "onnxruntime>=1.23.0",
+  "onnxmltools>=1.14.0",
+  "skl2onnx>=1.19.0",
+]
 test = ["pytest>=9.0.0"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+[tool.setuptools.packages.find]
+include = ["all_tmd*"]

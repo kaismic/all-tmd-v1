@@ -34,6 +34,39 @@ feature extraction, and training for every object in `trials.json`. They stop
 on the first failing stage and leave MLflow running so its UI remains
 available.
 
+## Export the selected mobile model
+
+Run `e821edccef3648d1be52848dd413f007` is the deployment baseline. Install the
+deployment extras and export its complete scikit-learn pipeline, including the
+median imputer and XGBoost classifier:
+
+```powershell
+python -m pip install -e ".[deployment,test]"
+python .\scripts\export-e821edc-onnx.py `
+  --model <run-artifacts>\model.joblib `
+  --metrics <run-artifacts>\metrics.json `
+  --split-manifest <run-artifacts>\nor-tmd.json `
+  --feature-cache <all-tmd-work>\features `
+  --collector-run-log <aws-run-bundle>\run\run.log `
+  --output-dir ..\..\apps\transport-mode-detector\assets\e821edc
+```
+
+The exporter reconstructs the run's frozen collector holdout from the recorded
+session list, requires the canonical confusion matrix to be reproduced, and
+compares Python and ONNX Runtime across all 3,941 holdout rows. Export fails if
+any predicted class differs or if the largest probability difference exceeds
+`1e-5`. It writes the deployed model, versioned metadata, 96 balanced
+classifier fixtures, and a raw sensor-window fixture used to verify all 11
+mobile features. The committed baseline model is 4,813,737 bytes
+(4.5907 MiB), with SHA-256
+`c12d03261ad14309063a3f5f95e98944ebbaaab68474cdfecde27283a1e2fd52`.
+
+Run the export unit tests with:
+
+```powershell
+python -m pytest tests\test_deployment.py
+```
+
 ## Run trials on AWS EC2
 
 The AWS runner is intended for occasional, long CPU sweeps that should continue

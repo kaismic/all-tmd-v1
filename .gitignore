@@ -2,6 +2,8 @@ trials.json
 trial-parameters.json
 .env
 .pytest_cache/
+.venv/
+*.egg-info/
 __pycache__/
 *.py[cod]
 data/
