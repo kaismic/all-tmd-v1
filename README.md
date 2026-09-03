@@ -115,7 +115,22 @@ aws login
 Use the first command to create and inspect a non-executed change set. Re-run the
 second command once after upgrading an existing stack to grant v2 access and
 publish the shared-worker contract. The update changes IAM policy and stack
-outputs; it must not replace the EC2 instance, EBS volume, or S3 bucket.
+outputs; it must not replace the EC2 instance, EBS volume, or S3 bucket. On an
+existing stack, the deploy script reads and pins the worker's current AMI so the
+moving Ubuntu `stable/current` SSM parameter cannot trigger replacement. A new
+stack still resolves that parameter to the latest stable Ubuntu image.
+
+Never execute a change set that reports replacement of `WorkerInstance` or
+`DataVolumeAttachment`. Delete that change set and regenerate it with the current
+script. If a previous attempt left the stack in `UPDATE_ROLLBACK_FAILED`, run:
+
+```powershell
+aws cloudformation continue-update-rollback `
+  --stack-name all-tmd-v1-worker `
+  --region ap-southeast-2
+```
+
+Wait for `UPDATE_ROLLBACK_COMPLETE`, then preview again.
 
 The deployment validates Docker, Compose, the EBS mount, and Systems Manager,
 then stops the initialized worker unless `-LeaveRunning` is supplied. The stack

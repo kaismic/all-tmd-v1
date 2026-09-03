@@ -22,3 +22,15 @@ def test_cloudformation_exposes_v2_shared_worker_contract_and_permissions():
     assert "SharedInputsPrefix:" in content
     assert "${ConsumerProjectName}/config/*" in content
     assert "${ConsumerProjectName}/results/*" in content
+
+
+def test_cloudformation_can_pin_the_existing_worker_ami_on_updates():
+    template = Path(__file__).parents[1] / "aws" / "cloudformation.yaml"
+    content = template.read_text(encoding="utf-8")
+
+    assert "WorkerImageId:" in content
+    assert "HasExplicitWorkerImageId:" in content
+    assert (
+        "ImageId: !If [HasExplicitWorkerImageId, !Ref WorkerImageId, "
+        "!Ref UbuntuImageId]" in content
+    )

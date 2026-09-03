@@ -20,6 +20,11 @@ Parameters:
   UbuntuImageId:
     Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
     Default: /aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id
+  WorkerImageId:
+    Type: String
+    Default: ""
+    AllowedPattern: "^$|^ami-[0-9a-f]+$"
+    Description: Existing worker AMI to preserve during stack updates; blank uses UbuntuImageId for a new stack.
   BucketName:
     Type: String
     Default: ""
@@ -48,6 +53,7 @@ Parameters:
 
 Conditions:
   HasExplicitBucketName: !Not [!Equals [!Ref BucketName, ""]]
+  HasExplicitWorkerImageId: !Not [!Equals [!Ref WorkerImageId, ""]]
 
 Resources:
   Vpc:
@@ -299,7 +305,7 @@ Resources:
             VolumeSize: 24
             VolumeType: gp3
       IamInstanceProfile: !Ref WorkerInstanceProfile
-      ImageId: !Ref UbuntuImageId
+      ImageId: !If [HasExplicitWorkerImageId, !Ref WorkerImageId, !Ref UbuntuImageId]
       InstanceType: !Ref InstanceType
       MetadataOptions:
         HttpEndpoint: enabled

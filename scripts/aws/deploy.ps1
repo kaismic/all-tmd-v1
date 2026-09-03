@@ -18,6 +18,35 @@ $ErrorActionPreference = "Stop"
 $projectRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 . (Join-Path $PSScriptRoot "common.ps1")
 Initialize-AwsContext -Region $Region -Profile $Profile
+$stackSummary = Invoke-AllTmdAws -Arguments @(
+    "cloudformation", "list-stacks",
+    "--query", "StackSummaries[?StackName=='$StackName' && StackStatus!='DELETE_COMPLETE'] | [0].[StackId,StackStatus]",
+    "--output", "text"
+) -AllowEmpty
+$stackSummaryText = ($stackSummary | Out-String).Trim()
+$existingWorkerImageId = ""
+if ($stackSummaryText -and $stackSummaryText -ne "None") {
+    $stackFields = $stackSummaryText -split "\s+"
+    $stackStatus = $stackFields[-1]
+    if ($stackStatus -eq "UPDATE_ROLLBACK_FAILED") {
+        throw "Stack $StackName is in UPDATE_ROLLBACK_FAILED. Run 'aws cloudformation continue-update-rollback --stack-name $StackName --region $Region', wait for UPDATE_ROLLBACK_COMPLETE, then retry."
+    }
+    if ($stackStatus -match '_IN_PROGRESS$') {
+        throw "Stack $StackName is currently $stackStatus. Wait for that operation to finish before deploying."
+    }
+    $existingOutputs = Get-AllTmdStackOutputs -StackName $StackName
+    $existingWorkerImageId = Invoke-AllTmdAws -Arguments @(
+        "ec2", "describe-instances",
+        "--instance-ids", $existingOutputs.InstanceId,
+        "--query", "Reservations[0].Instances[0].ImageId",
+        "--output", "text"
+    )
+    $existingWorkerImageId = ($existingWorkerImageId | Out-String).Trim()
+    if ($existingWorkerImageId -notmatch '^ami-[0-9a-f]+$') {
+        throw "Could not resolve the current AMI for worker $($existingOutputs.InstanceId); refusing an update that might replace it."
+    }
+    Write-Host "Pinning existing worker $($existingOutputs.InstanceId) to AMI $existingWorkerImageId for this stack update."
+}
 $collectorOutputs = Get-AllTmdStackOutputs -StackName $CollectorStackName
 if (-not $collectorOutputs.SessionsBucketName -or -not $collectorOutputs.SessionsTableName) {
     throw "Collector stack $CollectorStackName does not expose SessionsBucketName and SessionsTableName."
@@ -47,6 +76,9 @@ $parameterOverrides = @(
 )
 if ($BucketName) {
     $parameterOverrides += "BucketName=$BucketName"
+}
+if ($existingWorkerImageId) {
+    $parameterOverrides += "WorkerImageId=$existingWorkerImageId"
 }
 
 $deployArguments = @(

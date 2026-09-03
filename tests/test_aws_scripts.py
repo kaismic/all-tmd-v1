@@ -29,6 +29,16 @@ def test_deploy_can_preview_shared_worker_change_set():
     assert '"ConsumerProjectName=$ConsumerProjectName"' in deploy
 
 
+def test_deploy_pins_the_current_worker_ami_during_stack_updates():
+    deploy = (AWS_SCRIPTS / "deploy.ps1").read_text(encoding="utf-8")
+
+    assert '"cloudformation", "list-stacks"' in deploy
+    assert '"ec2", "describe-instances"' in deploy
+    assert '"WorkerImageId=$existingWorkerImageId"' in deploy
+    assert "refusing an update that might replace it" in deploy
+    assert 'if ($stackStatus -eq "UPDATE_ROLLBACK_FAILED")' in deploy
+
+
 def test_ssm_wait_detects_an_externally_stopped_instance():
     common = (AWS_SCRIPTS / "common.ps1").read_text(encoding="utf-8")
 
