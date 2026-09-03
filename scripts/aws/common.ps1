@@ -100,6 +100,16 @@ function Get-AllTmdEc2InstanceState {
     return ($state | Out-String).Trim()
 }
 
+function Get-AllTmdActiveRunOwner {
+    param([Parameter(Mandatory = $true)][string]$InstanceId)
+    $commandId = Send-AllTmdSsmCommand -InstanceId $InstanceId -Commands @(
+        'if systemctl is-active --quiet all-tmd-trials.service; then owner=$(systemctl show all-tmd-trials.service --property=ExecStart --value | grep -o "all-tmd-v[12]" | head -n 1); if test -n "$owner"; then printf "%s" "$owner"; elif test -r /etc/all-tmd-worker/active-project; then cat /etc/all-tmd-worker/active-project; else printf unknown; fi; fi'
+    ) -Comment "Identify active All-TMD workload"
+    $invocation = Wait-AllTmdSsmCommand -CommandId $commandId `
+        -InstanceId $InstanceId
+    return ([string]$invocation.StandardOutputContent).Trim()
+}
+
 function Wait-AllTmdSsmOnline {
     param(
         [Parameter(Mandatory = $true)][string]$InstanceId,

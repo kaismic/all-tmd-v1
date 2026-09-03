@@ -11,6 +11,7 @@ $ErrorActionPreference = "Stop"
 Initialize-AwsContext -Region $Region -Profile $Profile
 $outputs = Get-AllTmdStackOutputs -StackName $StackName
 Write-Host "Deleting stack $StackName."
+Write-Warning "This stack owns the worker used by both all-tmd-v1 and all-tmd-v2. Archiving it disables AWS runs for both projects."
 Write-Host "CloudFormation will snapshot EBS volume $($outputs.DataVolumeId) and retain S3 bucket $($outputs.BucketName)."
 Invoke-AllTmdAws -Arguments @(
     "cloudformation", "delete-stack", "--stack-name", $StackName

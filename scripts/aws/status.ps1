@@ -23,6 +23,10 @@ $state = ($state | Out-String).Trim()
 Write-Host "Instance: $instanceId ($state)"
 if ($state -eq "running") {
     Wait-AllTmdSsmOnline -InstanceId $instanceId -TimeoutSeconds 120
+    $activeOwner = Get-AllTmdActiveRunOwner -InstanceId $instanceId
+    if ($activeOwner -and $activeOwner -ne "all-tmd-v1") {
+        throw "Shared worker $instanceId is running $activeOwner, not all-tmd-v1. Use that project's status script."
+    }
     $commandId = Send-AllTmdSsmCommand -InstanceId $instanceId -Commands @(
         "systemctl show all-tmd-trials.service --property=ActiveState,SubState,Result,ExecMainStatus",
         "journalctl -u all-tmd-trials.service --no-pager -n $LogLines"

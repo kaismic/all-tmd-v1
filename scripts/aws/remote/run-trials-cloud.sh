@@ -6,6 +6,8 @@ state_dir=/etc/all-tmd-v1
 install_dir=/usr/local/lib/all-tmd-v1
 service_name=all-tmd-trials.service
 data_dir=/mnt/all-tmd-data
+project_name=all-tmd-v1
+shared_state_dir=/etc/all-tmd-worker
 
 usage() {
     printf '%s\n' \
@@ -52,13 +54,15 @@ install_service() {
         return 1
     fi
 
-    install -d -m 0755 "$state_dir" "$install_dir"
+    install -d -m 0755 "$state_dir" "$install_dir" "$shared_state_dir"
     install -m 0755 "$0" "$install_dir/run-trials-cloud.sh"
     {
         printf 'ALL_TMD_AWS_BUCKET=%q\n' "$bucket"
         printf 'ALL_TMD_RUN_ID=%q\n' "$run_id"
+        printf 'ALL_TMD_PROJECT=%q\n' "$project_name"
     } >"$state_dir/run.env"
     chmod 0600 "$state_dir/run.env"
+    printf '%s\n' "$project_name" >"$shared_state_dir/active-project"
 
     cat >/etc/systemd/system/$service_name <<EOF
 [Unit]

@@ -18,6 +18,15 @@ def test_deploy_starts_an_existing_stopped_worker_before_validation():
     assert 'if ($instanceState -eq "stopped")' in deploy
     assert '"ec2", "start-instances"' in deploy
     assert "Wait-AllTmdSsmOnline -InstanceId $instanceId" in deploy
+    assert "$startedWorker" in deploy
+
+
+def test_deploy_can_preview_shared_worker_change_set():
+    deploy = (AWS_SCRIPTS / "deploy.ps1").read_text(encoding="utf-8")
+
+    assert "[switch]$NoExecuteChangeSet" in deploy
+    assert '"--no-execute-changeset"' in deploy
+    assert '"ConsumerProjectName=$ConsumerProjectName"' in deploy
 
 
 def test_ssm_wait_detects_an_externally_stopped_instance():
@@ -53,6 +62,24 @@ def test_cloud_runner_syncs_collector_backend_directly():
     assert '--run-id "$ALL_TMD_RUN_ID"' in runner
     assert '@("nor-tmd-data", "us-tmd-data")' in uploader
     assert 'all-tmd-v1/inputs/$source' in uploader
+
+
+def test_shared_service_records_owner_and_guards_cross_project_operations():
+    runner = (AWS_SCRIPTS / "remote" / "run-trials-cloud.sh").read_text(
+        encoding="utf-8"
+    )
+    common = (AWS_SCRIPTS / "common.ps1").read_text(encoding="utf-8")
+    status = (AWS_SCRIPTS / "status.ps1").read_text(encoding="utf-8")
+    stopper = (AWS_SCRIPTS / "stop-worker.ps1").read_text(encoding="utf-8")
+
+    assert "project_name=all-tmd-v1" in runner
+    assert "ALL_TMD_PROJECT" in runner
+    assert 'shared_state_dir=/etc/all-tmd-worker' in runner
+    assert 'active-project' in runner
+    assert "function Get-AllTmdActiveRunOwner" in common
+    assert '$activeOwner -ne "all-tmd-v1"' in status
+    assert "[switch]$ForceSharedWorker" in stopper
+    assert '$activeOwner -ne "all-tmd-v1"' in stopper
 
 
 def test_cloud_runner_uses_serverless_run_specific_mlflow_storage():

@@ -9,7 +9,9 @@ param(
     [string]$BucketName = "",
     [string]$CollectorStackName = "transport-data-collector",
     [string]$NtfyTokenParameterName = "/all-tmd-v1/ntfy-token",
-    [switch]$LeaveRunning
+    [string]$ConsumerProjectName = "all-tmd-v2",
+    [switch]$LeaveRunning,
+    [switch]$NoExecuteChangeSet
 )
 
 $ErrorActionPreference = "Stop"
@@ -39,6 +41,7 @@ $parameterOverrides = @(
     "DataVolumeSizeGiB=$DataVolumeSizeGiB",
     "BudgetNotificationEmail=$BudgetEmail",
     "NtfyTokenParameterName=$NtfyTokenParameterName"
+    "ConsumerProjectName=$ConsumerProjectName"
     "CollectorSessionsBucketName=$($collectorOutputs.SessionsBucketName)"
     "CollectorSessionsTableName=$($collectorOutputs.SessionsTableName)"
 )
@@ -53,11 +56,19 @@ $deployArguments = @(
     "--capabilities", "CAPABILITY_IAM",
     "--parameter-overrides"
 ) + $parameterOverrides
+if ($NoExecuteChangeSet) {
+    $deployArguments += "--no-execute-changeset"
+}
 Invoke-AllTmdAws -Arguments $deployArguments -AllowEmpty
+if ($NoExecuteChangeSet) {
+    Write-Host "Created a non-executed CloudFormation change set for $StackName. Review it in CloudFormation, then rerun without -NoExecuteChangeSet to apply it."
+    return
+}
 
 $outputs = Get-AllTmdStackOutputs -StackName $StackName
 $instanceId = $outputs.InstanceId
 $instanceState = Get-AllTmdEc2InstanceState -InstanceId $instanceId
+$startedWorker = $false
 if ($instanceState -eq "stopping") {
     Invoke-AllTmdAws -Arguments @(
         "ec2", "wait", "instance-stopped", "--instance-ids", $instanceId
@@ -69,6 +80,7 @@ if ($instanceState -eq "stopped") {
         "ec2", "start-instances", "--instance-ids", $instanceId,
         "--output", "json"
     ) | Out-Null
+    $startedWorker = $true
 }
 elseif ($instanceState -in @("shutting-down", "terminated")) {
     throw "Worker $instanceId cannot be validated because it is $instanceState."
@@ -93,7 +105,7 @@ for ($attempt = 0; $attempt -lt 60 -and -not $ready; $attempt++) {
     }
 }
 
-if (-not $LeaveRunning) {
+if ($startedWorker -and -not $LeaveRunning) {
     Invoke-AllTmdAws -Arguments @(
         "ec2", "stop-instances", "--instance-ids", $instanceId,
         "--output", "json"
@@ -101,7 +113,7 @@ if (-not $LeaveRunning) {
     Write-Host "Worker $instanceId is initialized and stopping to avoid idle compute charges."
 }
 else {
-    Write-Host "Worker $instanceId is initialized and remains running."
+    Write-Host "Worker $instanceId is initialized and remains running because it was already running or -LeaveRunning was supplied."
 }
 Write-Host "S3 bucket: $($outputs.BucketName)"
 Write-Host "Data volume: $($outputs.DataVolumeId)"

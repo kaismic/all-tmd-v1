@@ -70,7 +70,8 @@ python -m pytest tests\test_deployment.py
 ## Run trials on AWS EC2
 
 The AWS runner is intended for occasional, long CPU sweeps that should continue
-without keeping the local computer available. It deploys one On-Demand
+without keeping the local computer available. This stack owns the worker shared
+sequentially by `all-tmd-v1` and `all-tmd-v2`. It deploys one On-Demand
 `c7i.4xlarge` worker in `ap-southeast-2`, an encrypted 200 GiB `gp3` data
 volume, and a private encrypted S3 bucket. The worker has no inbound security
 group rules; administration and on-demand MLflow port forwarding use Systems
@@ -86,6 +87,9 @@ directly to isolated run storage, without a tracking server. Every run uploads
 its reports, models, splits, configuration, logs, resource-usage report, and
 run-specific MLflow state to S3 before stopping the worker.
 The worker also stops after pipeline failure, once diagnostics are uploaded.
+The common `all-tmd-trials.service` permits only one v1 or v2 run at a time.
+Raw inputs and collector downloads are shared; mutable work directories,
+checkouts, run state, MLflow stores, and S3 result prefixes remain versioned.
 
 ### Prerequisites and deployment
 
@@ -104,12 +108,14 @@ CloudFormation stack; use `-CollectorStackName` if it has a different name:
 
 ```powershell
 aws login
+.\scripts\aws\deploy.ps1 -BudgetEmail you@example.com -NoExecuteChangeSet
 .\scripts\aws\deploy.ps1 -BudgetEmail you@example.com
 ```
 
-Re-run this deployment command once after upgrading an existing All-TMD stack;
-that applies the collector read permissions to its worker role. The script
-temporarily starts a stopped worker for validation and stops it again afterward.
+Use the first command to create and inspect a non-executed change set. Re-run the
+second command once after upgrading an existing stack to grant v2 access and
+publish the shared-worker contract. The update changes IAM policy and stack
+outputs; it must not replace the EC2 instance, EBS volume, or S3 bucket.
 
 The deployment validates Docker, Compose, the EBS mount, and Systems Manager,
 then stops the initialized worker unless `-LeaveRunning` is supplied. The stack
@@ -137,6 +143,13 @@ At the start of each EC2 run, the worker queries the collector backend's
 directly from its `raw/` S3 prefix, and records a persistent EBS checkpoint.
 Uploads confirmed after that startup sync are intentionally picked up by the
 next run, so a trial always trains against a stable collector snapshot.
+The immutable S3 inputs and their EBS copies are also reused by v2; do not upload
+a second copy under an `all-tmd-v2/inputs` prefix.
+
+Both versions retain Docker images and Git checkouts on the 24 GiB root volume.
+Check usage periodically with `docker system df` and `df -h`; prune unused Docker
+artifacts manually when necessary. The scripts never prune images or caches
+automatically.
 
 ### Smoke and full runs
 
@@ -354,6 +367,8 @@ and EBS CloudWatch metrics provide instance CPU and volume throughput history.
 
 Use `stop-worker.ps1` if a debugging run was prepared with `-NoAutoStop`. A
 stopped worker incurs no EC2 compute charge, but EBS storage remains billable.
+The stop script refuses to interrupt the other All-TMD version unless
+`-ForceSharedWorker` is supplied intentionally.
 If another sweep is not expected within 30 days, archive the stack explicitly:
 
 ```powershell
@@ -363,7 +378,8 @@ If another sweep is not expected within 30 days, archive the stack explicitly:
 Archiving deletes the worker and its dedicated network, creates a final EBS
 snapshot through CloudFormation, and retains the S3 bucket. Snapshots and S3
 objects remain billable until deliberately deleted. The CloudFormation outputs
-identify every persistent resource.
+identify every persistent resource. Because v1 owns the shared infrastructure,
+archiving disables AWS runs for both v1 and v2; v2 cannot archive it directly.
 
 ### Generate trial configurations
 

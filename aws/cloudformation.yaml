@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: "2010-09-09"
-Description: Persistent On-Demand EC2 worker for occasional All-TMD trial sweeps.
+Description: Shared persistent On-Demand EC2 worker for All-TMD v1 and v2 trial sweeps.
 
 Parameters:
   ProjectName:
@@ -36,6 +36,11 @@ Parameters:
     Type: String
     Default: /all-tmd-v1/ntfy-token
     AllowedPattern: '^/[A-Za-z0-9_./-]+$'
+  ConsumerProjectName:
+    Type: String
+    Default: all-tmd-v2
+    AllowedPattern: "^[a-zA-Z0-9-]+$"
+    Description: Additional All-TMD project allowed to use this shared worker.
   BudgetNotificationEmail:
     Type: String
     AllowedPattern: '^[^@\s]+@[^@\s]+\.[^@\s]+$'
@@ -209,6 +214,7 @@ Resources:
                   StringLike:
                     s3:prefix:
                       - all-tmd-v1/*
+                      - !Sub ${ConsumerProjectName}/*
               - Sid: ReadInputsAndConfiguration
                 Effect: Allow
                 Action:
@@ -217,6 +223,7 @@ Resources:
                 Resource:
                   - !Sub ${DataBucket.Arn}/all-tmd-v1/inputs/*
                   - !Sub ${DataBucket.Arn}/all-tmd-v1/config/*
+                  - !Sub ${DataBucket.Arn}/${ConsumerProjectName}/config/*
               - Sid: QueryConfirmedCollectorSessions
                 Effect: Allow
                 Action: dynamodb:Query
@@ -236,7 +243,9 @@ Resources:
                 Effect: Allow
                 Action:
                   - s3:PutObject
-                Resource: !Sub ${DataBucket.Arn}/all-tmd-v1/results/*
+                Resource:
+                  - !Sub ${DataBucket.Arn}/all-tmd-v1/results/*
+                  - !Sub ${DataBucket.Arn}/${ConsumerProjectName}/results/*
               - Sid: ReadNotificationToken
                 Effect: Allow
                 Action: ssm:GetParameter
@@ -401,3 +410,9 @@ Outputs:
     Value: !Ref AWS::Region
   ServiceName:
     Value: all-tmd-trials.service
+  SharedInputsPrefix:
+    Value: all-tmd-v1/inputs
+  SharedWorkerConsumerProject:
+    Value: !Ref ConsumerProjectName
+  SharedWorkerContractVersion:
+    Value: "1"
