@@ -16,7 +16,7 @@ def test_hash_is_canonical_json_of_trial_without_training(config_factory):
                 key: value
                 for key, value in config.trial.raw.items()
                 if key != "training"
-            },
+            } | {"collector_country_policy_version": 1},
             sort_keys=True,
             separators=(",", ":"),
             ensure_ascii=True,

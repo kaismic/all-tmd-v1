@@ -93,7 +93,10 @@ class TrialConfig:
     def config_hash_input(self) -> dict[str, Any]:
         """Return the trial fields that affect ingestion and feature extraction."""
         excluded = TRIAL_DISPLAY_FIELDS | {"training"}
-        return {key: value for key, value in self.raw.items() if key not in excluded}
+        return {
+            **{key: value for key, value in self.raw.items() if key not in excluded},
+            "collector_country_policy_version": 1,
+        }
 
     @property
     def trial_hash_input(self) -> dict[str, Any]:
@@ -310,6 +313,7 @@ class PipelineConfig:
                 for key, value in saved_trial.items()
                 if key not in (TRIAL_DISPLAY_FIELDS | {"training"})
             }
+            saved_hash_input["collector_country_policy_version"] = 1
             if saved_hash_input != self.trial.config_hash_input:
                 raise ValueError(f"Trial hash collision at {trial_path}")
         else:

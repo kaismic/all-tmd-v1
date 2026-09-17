@@ -21,6 +21,7 @@ SYNC_PARTITION = "received"
 SNAPSHOT_TEXT_FIELDS = (
     "session_id",
     "participant_id",
+    "collection_country_code",
     "device_uuid",
     "vehicle_type",
     "phone_position",
@@ -44,6 +45,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--bucket", required=True)
     parser.add_argument("--table", required=True)
     parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument("--refresh-metadata", action="store_true",
+                        help="Refresh existing sidecars from DynamoDB without downloading payloads.")
     parser.add_argument(
         "--snapshot-path",
         type=Path,
@@ -301,7 +304,39 @@ def download_session(bucket: str, output_dir: Path, item: dict[str, Any]) -> boo
     return downloaded
 
 
-def sync(bucket: str, table: str, output_dir: Path) -> dict[str, int]:
+def refresh_existing_metadata(table: str, output_dir: Path) -> int:
+    local = {}
+    for path in sorted(output_dir.rglob("*.json.gz.metadata.json")):
+        old = json.loads(path.read_text(encoding="utf-8"))
+        if not is_eligible(old):
+            continue
+        session_id = old["session_id"]
+        if session_id in local or path != destination_for(
+            output_dir, old["s3_key"]
+        ).with_suffix(".gz.metadata.json"):
+            raise ValueError(f"Duplicate or mismatched collector sidecar: {path}")
+        local[session_id] = (path, old)
+    remote = {
+        item["session_id"]: item for item in query_sessions(table, "")
+        if item.get("session_id") in local
+    }
+    if set(remote) != set(local):
+        raise ValueError("Downloaded sessions are missing from DynamoDB")
+    for session_id, (_, old) in local.items():
+        item = remote[session_id]
+        if (item.get("participant_id") != old.get("participant_id")
+                or item.get("s3_key") != old.get("s3_key")
+                or item.get("status") != "received"):
+            raise ValueError(f"Remote metadata mismatch for {session_id}")
+    refreshed = 0
+    for session_id, (path, old) in local.items():
+        if remote[session_id] != old:
+            write_json_atomic(path, remote[session_id])
+            refreshed += 1
+    return refreshed
+
+
+def sync(bucket: str, table: str, output_dir: Path, refresh_metadata: bool = False) -> dict[str, int]:
     output_dir.mkdir(parents=True, exist_ok=True)
     checkpoint_path = output_dir / ".download_checkpoint.json"
     last_sync_key = read_checkpoint(checkpoint_path, bucket, table)
@@ -310,6 +345,7 @@ def sync(bucket: str, table: str, output_dir: Path) -> dict[str, int]:
     downloaded_count = sum(
         download_session(bucket, output_dir, item) for item in eligible
     )
+    refreshed_count = refresh_existing_metadata(table, output_dir) if refresh_metadata else 0
     if discovered:
         write_json_atomic(
             checkpoint_path,
@@ -325,6 +361,7 @@ def sync(bucket: str, table: str, output_dir: Path) -> dict[str, int]:
         "discovered_count": len(discovered),
         "eligible_count": len(eligible),
         "downloaded_count": downloaded_count,
+        "refreshed_metadata_count": refreshed_count,
     }
 
 
@@ -332,7 +369,7 @@ def main() -> None:
     args = parse_args()
     if bool(args.snapshot_path) != bool(args.run_id):
         raise ValueError("--snapshot-path and --run-id must be provided together")
-    result = sync(args.bucket, args.table, args.output_dir)
+    result = sync(args.bucket, args.table, args.output_dir, args.refresh_metadata)
     if args.snapshot_path:
         snapshot = write_collector_snapshot(
             args.snapshot_path,

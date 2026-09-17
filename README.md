@@ -6,6 +6,15 @@ against collector holdout sessions. The first adapters support US-TMD and
 NOR-TMD; the shared pipeline is designed so another source can be added with
 one `TrainingDatasetAdapter` implementation.
 
+Sydney collector ingestion uses each payload's DynamoDB metadata sidecar:
+sessions labelled with a `collection_country_code` other than `AU` are excluded.
+Legacy sessions without a country label remain eligible, except unlabelled
+`participant_010` sessions, which wait for review. A changed ingestion cache key
+ensures new runs cannot reuse collector events built before this rule. Existing
+run artifacts retain their original membership. The EC2 sync refreshes existing
+sidecars from the existing confirmed-session index before capturing its
+collector snapshot.
+
 ## Configure and run
 
 Copy the examples, generate the Cartesian product of trials, and set the host
