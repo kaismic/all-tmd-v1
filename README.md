@@ -297,6 +297,20 @@ by a paragraph with centered equations that define the table's ranking value.
 Duplicate MLflow run IDs present in multiple downloads are included once. Use
 `--limit <count>` or `--precision <digits>` to override the defaults.
 
+Generate a self-contained exploratory report beneath one downloaded AWS run:
+
+```powershell
+python .\scripts\generate-aws-run-exploratory-report.py <run-id>
+```
+
+The command creates `aws-results/<run-id>/exploratory-report` containing a
+LaTeX table bundle, two PNG figures, and a short regeneration README. It selects
+only MLflow trials started during that AWS run, even when the downloaded MLflow
+database also contains earlier experiments. Pressure and magnetometer sweeps
+are summarized by window duration and feature configuration; class-specific
+calibration sweeps receive overall-metric and per-mode F1 comparisons. Use
+`--results-root` or `--output-dir` to override the default locations.
+
 Generate a bar chart for the top downloaded MLflow runs by one collector
 holdout metric:
 
