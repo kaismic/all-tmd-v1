@@ -31,6 +31,23 @@ accelerometer, gyroscope, magnetometer, pressure & 0.7453 & 4 \\
 \end{tabular}
 \end{table}
 
+% A = accelerometer, G = gyroscope, M = magnetometer, P = pressure.
+\begin{table}[htbp]
+\centering
+\caption{Collector holdout macro F1 for each window and sensor combination.}
+\label{tab:transfer-v2-run-f1}
+\begin{tabular}{rrrr}
+\hline
+\textbf{Window (seconds)} & \textbf{A, G} & \textbf{A, G, M} & \textbf{A, G, M, P} \\
+\hline
+10 & 0.5766 & 0.6267 & 0.7118 \\
+20 & 0.6189 & 0.6789 & 0.7376 \\
+30 & 0.6409 & 0.6772 & 0.7837 \\
+60 & 0.6328 & 0.7255 & 0.7480 \\
+\hline
+\end{tabular}
+\end{table}
+
 % The 12 experiment runs shared the same collector checkpoint (104 session IDs).
 \begin{table}[htbp]
 \centering
