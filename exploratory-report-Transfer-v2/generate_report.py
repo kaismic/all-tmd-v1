@@ -231,7 +231,7 @@ def plot_bar_chart(
     )
     axis.set_title(title)
     axis.set_xlabel(xlabel)
-    axis.set_ylabel("Average Collector Holdout Macro F1")
+    axis.set_ylabel("Average Macro F1")
     axis.set_ylim(0, 1.0)
     axis.grid(axis="y", alpha=0.25)
     axis.set_axisbelow(True)
@@ -274,7 +274,7 @@ def render_latex(
             "",
             r"\begin{table}[htbp]",
             r"\centering",
-            r"\caption{Average collector holdout macro F1 by sensor configuration.}",
+            r"\caption{Average macro F1 by sensor configuration.}",
             r"\label{tab:transfer-v2-sensor-f1}",
             r"\begin{tabular}{lrr}",
             r"\hline",
@@ -296,7 +296,7 @@ def render_latex(
             "% A = accelerometer, G = gyroscope, M = magnetometer, P = pressure.",
             r"\begin{table}[htbp]",
             r"\centering",
-            r"\caption{Collector holdout macro F1 for each window and sensor combination.}",
+            r"\caption{Average macro F1 for each window and sensor combination.}",
             r"\label{tab:transfer-v2-run-f1}",
             r"\begin{tabular}{rrrr}",
             r"\hline",
@@ -364,7 +364,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         plot_bar_chart(
             window_averages,
             [str(value) for value in EXPECTED_WINDOWS],
-            "Average Collector Holdout Macro F1 by Window Duration",
+            "Average Macro F1 by Window Duration",
             "Window Seconds",
             args.output_dir / WINDOW_FIGURE,
         )
@@ -375,7 +375,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "Accelerometer + Gyroscope +\nMagnetometer",
                 "Accelerometer + Gyroscope +\nMagnetometer + Pressure",
             ],
-            "Average Collector Holdout Macro F1 by Sensors",
+            "Average Macro F1 by Sensors",
             "Sensors",
             args.output_dir / SENSOR_FIGURE,
         )
