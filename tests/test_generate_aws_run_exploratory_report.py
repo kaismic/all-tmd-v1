@@ -224,3 +224,76 @@ def test_effective_snapshot_matches_mlflow_count_and_digest() -> None:
     ]
     assert result.session_id_digest == expected_digest
     assert MODULE.build_snapshot_rows(result)[-1].samples == 300
+
+
+def test_effective_snapshot_groups_report_sensor_dependent_memberships() -> None:
+    sessions = (
+        {
+            "session_id": "bus-with-pressure",
+            "vehicle_type": "bus",
+            "participant_id": "participant_001",
+            "duration_seconds": 60,
+            "sample_count": 100,
+            "sensor_manifest": {
+                "barometer": {"available": True, "observed_hz": 2.5}
+            },
+        },
+        {
+            "session_id": "bus-low-pressure-rate",
+            "vehicle_type": "bus",
+            "participant_id": "participant_002",
+            "duration_seconds": 30,
+            "sample_count": 50,
+            "sensor_manifest": {
+                "barometer": {"available": True, "observed_hz": 1.5}
+            },
+        },
+        {
+            "session_id": "car-without-pressure",
+            "vehicle_type": "car",
+            "participant_id": "participant_003",
+            "duration_seconds": 120,
+            "sample_count": 200,
+            "sensor_manifest": {},
+        },
+    )
+    raw_snapshot = MODULE.CollectorSnapshot(sessions, "test snapshot", "raw-digest")
+    no_pressure_digest = MODULE._session_id_digest(sessions)
+    pressure_sessions = (sessions[0],)
+    pressure_digest = MODULE._session_id_digest(pressure_sessions)
+    trials = [
+        trial(
+            0,
+            sensors="accelerometer,gyroscope,magnetometer",
+            collector_session_count="3",
+            collector_session_digest=no_pressure_digest,
+        ),
+        trial(
+            1,
+            **{
+                "features.pressure": "standard_deviation,range",
+                "sensors": "accelerometer,gyroscope,magnetometer,pressure",
+                "collector_minimum_sampling_rate.pressure": "2.0",
+                "collector_session_count": "1",
+                "collector_session_digest": pressure_digest,
+            },
+        ),
+    ]
+
+    groups = MODULE.derive_effective_snapshot_groups(raw_snapshot, trials)
+    rendered = MODULE.render_snapshot_latex(
+        "20260809T055942Z-9c676a2c-full",
+        trials,
+        raw_snapshot,
+        None,
+        groups,
+    )
+
+    assert [(group.label, len(group.snapshot.sessions)) for group in groups] == [
+        ("No-pressure trials", 3),
+        ("Pressure-enabled trials", 1),
+    ]
+    assert groups[0].snapshot.session_id_digest == no_pressure_digest
+    assert groups[1].snapshot.session_id_digest == pressure_digest
+    assert "Effective collector session snapshot for no-pressure trials." in rendered
+    assert "Effective collector session snapshot for pressure-enabled trials." in rendered

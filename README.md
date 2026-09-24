@@ -307,9 +307,11 @@ The command creates `aws-results/<run-id>/exploratory-report` containing a
 LaTeX table bundle, two PNG figures, and a short regeneration README. It selects
 only MLflow trials started during that AWS run, even when the downloaded MLflow
 database also contains earlier experiments. The LaTeX bundle includes both the
-raw collector payload snapshot captured at sweep startup and, when all trials
-share one membership, an effective-session table validated against MLflow's
-recorded session count and SHA-256 digest. For legacy runs, raw snapshot
+raw collector payload snapshot captured at sweep startup and one effective-session
+table for each distinct trial membership, validated against that group's MLflow
+session count and SHA-256 digest. Sensor-dependent sweeps can therefore report
+separate effective memberships for configurations such as pressure-disabled and
+pressure-enabled trials. For legacy runs, raw snapshot
 membership is reconstructed from `run.log` and the matching immutable metadata
 sidecars beneath `ALL_TMD_DATA_DIR/downloaded_sessions`; pass `--sessions-dir`
 when that environment or `.env` setting is unavailable. If either membership

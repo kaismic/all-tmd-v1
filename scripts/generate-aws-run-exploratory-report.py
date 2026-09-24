@@ -95,6 +95,13 @@ class SnapshotRow:
     samples: int
 
 
+@dataclass(frozen=True)
+class EffectiveSnapshotGroup:
+    label: str
+    trials: tuple[TrialResult, ...]
+    snapshot: CollectorSnapshot
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -276,6 +283,26 @@ def build_snapshot_rows(snapshot: CollectorSnapshot) -> list[SnapshotRow]:
     return rows
 
 
+def _meets_sensor_requirements(
+    session: dict[str, Any], minimum_rates: dict[str, float]
+) -> bool:
+    manifest = session.get("sensor_manifest")
+    if not isinstance(manifest, dict):
+        return False
+    sensor_names = {"pressure": "barometer"}
+    for sensor, minimum_rate in minimum_rates.items():
+        details = manifest.get(sensor_names.get(sensor, sensor))
+        if not isinstance(details, dict) or details.get("available") is not True:
+            return False
+        try:
+            observed_rate = float(details["observed_hz"])
+        except (KeyError, TypeError, ValueError):
+            return False
+        if observed_rate < minimum_rate:
+            return False
+    return True
+
+
 def derive_effective_snapshot(
     raw_snapshot: CollectorSnapshot,
     trials: Sequence[TrialResult],
@@ -308,6 +335,27 @@ def derive_effective_snapshot(
         for session in raw_snapshot.sessions
         if str(session.get("vehicle_type") or "").strip().lower() in labels
     ]
+    required_sensors = {
+        sensor
+        for trial in trials
+        for sensor in trial.params.get("sensors", "").split(",")
+        if sensor
+    }
+    minimum_rates: dict[str, float] = {}
+    for sensor in required_sensors:
+        values = {
+            trial.params.get(f"collector_minimum_sampling_rate.{sensor}")
+            for trial in trials
+        }
+        values.discard(None)
+        if len(values) == 1:
+            minimum_rates[sensor] = float(values.pop())
+    if minimum_rates:
+        candidates = [
+            session
+            for session in candidates
+            if _meets_sensor_requirements(session, minimum_rates)
+        ]
     excluded_count = len(candidates) - expected_count
     if excluded_count < 0:
         raise ValueError(
@@ -345,6 +393,44 @@ def derive_effective_snapshot(
         "unique raw-snapshot subset matching MLflow collector membership",
         raw_digest,
     )
+
+
+def derive_effective_snapshot_groups(
+    raw_snapshot: CollectorSnapshot,
+    trials: Sequence[TrialResult],
+) -> list[EffectiveSnapshotGroup]:
+    grouped: dict[tuple[str | None, str | None], list[TrialResult]] = defaultdict(list)
+    for trial in trials:
+        grouped[
+            (
+                trial.params.get("collector_session_digest"),
+                trial.params.get("collector_session_count"),
+            )
+        ].append(trial)
+
+    any_pressure = any(trial.params.get("features.pressure") for trial in trials)
+    groups: list[EffectiveSnapshotGroup] = []
+    for group_trials in grouped.values():
+        has_pressure = all(
+            trial.params.get("features.pressure") for trial in group_trials
+        )
+        if len(grouped) == 1:
+            label = "All MLflow trials"
+        elif has_pressure:
+            label = "Pressure-enabled trials"
+        elif any_pressure:
+            label = "No-pressure trials"
+        else:
+            indices = ", ".join(str(trial.trial_index) for trial in group_trials)
+            label = f"MLflow trials {indices}"
+        groups.append(
+            EffectiveSnapshotGroup(
+                label=label,
+                trials=tuple(group_trials),
+                snapshot=derive_effective_snapshot(raw_snapshot, group_trials),
+            )
+        )
+    return groups
 
 
 def _timestamp_milliseconds(value: Any, description: str) -> int:
@@ -776,7 +862,7 @@ def render_snapshot_latex(
     trials: Sequence[TrialResult],
     snapshot: CollectorSnapshot | None,
     error: str | None,
-    effective_snapshot: CollectorSnapshot | None = None,
+    effective_groups: Sequence[EffectiveSnapshotGroup] = (),
     effective_error: str | None = None,
 ) -> str:
     label_prefix = "aws-run-" + run_id.split("-")[1]
@@ -825,7 +911,7 @@ def render_snapshot_latex(
             "",
         )
     )
-    if effective_snapshot is None:
+    if not effective_groups:
         explanation = effective_error or "No common effective membership was available."
         lines.extend(
             (
@@ -839,45 +925,57 @@ def render_snapshot_latex(
         )
         return "\n".join(lines)
 
-    effective_rows = build_snapshot_rows(effective_snapshot)
-    lines.extend(
-        (
-            f"% Effective collector snapshot source: {effective_snapshot.source}.",
-            "% Effective collector snapshot session ID digest: "
-            f"{effective_snapshot.session_id_digest}.",
+    multiple_groups = len(effective_groups) > 1
+    for index, group in enumerate(effective_groups, start=1):
+        effective_rows = build_snapshot_rows(group.snapshot)
+        lines.extend(
+            (
+                f"% Effective collector snapshot group: {group.label}.",
+                f"% Effective collector snapshot source: {group.snapshot.source}.",
+                "% Effective collector snapshot session ID digest: "
+                f"{group.snapshot.session_id_digest}.",
+            )
         )
-    )
-    lines.extend(
-        _table(
-            "Effective collector session snapshot used by all MLflow trials.",
-            f"tab:{label_prefix}-effective-collector-snapshot",
-            ("Mode", "Sessions", "Participants", "Duration", "Samples"),
-            [
-                (
-                    latex_escape(row.mode),
-                    str(row.sessions),
-                    str(row.participants),
-                    row.duration,
-                    f"{row.samples:,}",
-                )
-                for row in effective_rows
-            ],
+        caption = (
+            f"Effective collector session snapshot for {group.label.lower()}."
+            if multiple_groups
+            else "Effective collector session snapshot used by all MLflow trials."
         )
-    )
-    labels = sorted({label.title() for trial in trials for label in trial.class_f1})
-    lines.extend(
-        (
-            r"\paragraph{Effective collector snapshot scope.}",
-            f"The {len(effective_snapshot.sessions)}-session effective membership "
-            "is the unique subset of the raw snapshot restricted to the configured "
-            "transport modes ("
-            + latex_escape(", ".join(labels))
-            + ") whose canonical session-ID digest matches the value recorded by "
-            "every MLflow trial. It therefore reflects label and feature eligibility "
-            "filtering before calibration/holdout splitting.",
-            "",
+        suffix = f"-{index}" if multiple_groups else ""
+        lines.extend(
+            _table(
+                caption,
+                f"tab:{label_prefix}-effective-collector-snapshot{suffix}",
+                ("Mode", "Sessions", "Participants", "Duration", "Samples"),
+                [
+                    (
+                        latex_escape(row.mode),
+                        str(row.sessions),
+                        str(row.participants),
+                        row.duration,
+                        f"{row.samples:,}",
+                    )
+                    for row in effective_rows
+                ],
+            )
         )
-    )
+        labels = sorted(
+            {label.title() for trial in group.trials for label in trial.class_f1}
+        )
+        lines.extend(
+            (
+                rf"\paragraph{{{latex_escape(group.label)} effective snapshot scope.}}",
+                f"The {len(group.snapshot.sessions)}-session membership is the "
+                "unique subset of the raw snapshot restricted to the configured "
+                "transport modes ("
+                + latex_escape(", ".join(labels))
+                + ") and archived sensor requirements whose canonical session-ID "
+                "digest matches the value recorded by the associated MLflow trials. "
+                "It therefore reflects label and feature eligibility filtering "
+                "before calibration/holdout splitting.",
+                "",
+            )
+        )
     return "\n".join(lines)
 
 
@@ -987,14 +1085,14 @@ def generate_report(
         snapshot = None
         snapshot_error = str(error)
     if snapshot is None:
-        effective_snapshot = None
+        effective_groups: list[EffectiveSnapshotGroup] = []
         effective_error = "raw collector snapshot is unavailable"
     else:
         try:
-            effective_snapshot = derive_effective_snapshot(snapshot, trials)
+            effective_groups = derive_effective_snapshot_groups(snapshot, trials)
             effective_error = None
         except ValueError as error:
-            effective_snapshot = None
+            effective_groups = []
             effective_error = str(error)
 
     output_paths: list[Path] = []
@@ -1006,7 +1104,7 @@ def generate_report(
             trials,
             snapshot,
             snapshot_error,
-            effective_snapshot,
+            effective_groups,
             effective_error,
         )
         tables_path.write_text(
@@ -1045,7 +1143,7 @@ def generate_report(
             trials,
             snapshot,
             snapshot_error,
-            effective_snapshot,
+            effective_groups,
             effective_error,
         )
         tables_path.write_text(
