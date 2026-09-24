@@ -3,12 +3,16 @@
 from __future__ import annotations
 
 import argparse
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import datetime
+import hashlib
 import json
 import math
+import os
 from pathlib import Path
+from pathlib import PurePosixPath
+import re
 import sqlite3
 import sys
 from typing import Any, Iterable, Sequence
@@ -18,6 +22,9 @@ EXPERIMENT_NAME = "ALL-TMD"
 SUMMARY_REPORT_KEYS = {"accuracy", "macro avg", "weighted avg"}
 TABLES_FILENAME = "aws-run-tables.tex"
 WINDOW_FIGURE = "average-collector-holdout-macro-f1-by-window-seconds.png"
+LOG_SESSION_PATTERN = re.compile(
+    r"path=/data/downloaded_sessions/(.+(?:\.json|\.json\.gz))$"
+)
 
 
 @dataclass(frozen=True)
@@ -72,6 +79,22 @@ class Average:
     run_count: int
 
 
+@dataclass(frozen=True)
+class CollectorSnapshot:
+    sessions: tuple[dict[str, Any], ...]
+    source: str
+    session_id_digest: str
+
+
+@dataclass(frozen=True)
+class SnapshotRow:
+    mode: str
+    sessions: int
+    participants: int
+    duration: str
+    samples: int
+
+
 def _read_json(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -80,6 +103,177 @@ def _read_json(path: Path) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise ValueError(f"expected a JSON object in {path}")
     return value
+
+
+def _integer_or_none(value: Any) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _duration_seconds(session: dict[str, Any]) -> float | None:
+    value = session.get("duration_seconds")
+    if value is not None and not isinstance(value, bool):
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            pass
+    for start_key, end_key in (
+        ("trimmed_start_ms", "trimmed_end_ms"),
+        ("started_at_ms", "stopped_at_ms"),
+    ):
+        start = _integer_or_none(session.get(start_key))
+        end = _integer_or_none(session.get(end_key))
+        if start is not None and end is not None and end >= start:
+            return (end - start) / 1000
+    return None
+
+
+def _format_duration(seconds: float) -> str:
+    rounded = int(round(seconds))
+    hours, remainder = divmod(rounded, 3600)
+    minutes, seconds = divmod(remainder, 60)
+    return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+
+
+def _session_id_digest(sessions: Sequence[dict[str, Any]]) -> str:
+    session_ids: list[str] = []
+    for session in sessions:
+        session_id = session.get("session_id")
+        if not isinstance(session_id, str) or not session_id:
+            raise ValueError("collector snapshot contains an invalid session_id")
+        session_ids.append(session_id)
+    if len(set(session_ids)) != len(session_ids):
+        raise ValueError("collector snapshot contains duplicate session IDs")
+    canonical = json.dumps(
+        sorted(session_ids), ensure_ascii=True, separators=(",", ":")
+    )
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
+
+
+def configured_sessions_dir(project_dir: Path) -> Path | None:
+    configured = os.environ.get("ALL_TMD_DATA_DIR")
+    env_path = project_dir / ".env"
+    if not configured and env_path.is_file():
+        for line in env_path.read_text(encoding="utf-8").splitlines():
+            if line.startswith("ALL_TMD_DATA_DIR="):
+                configured = line.partition("=")[2].strip()
+                break
+    if not configured:
+        return None
+    return Path(configured).expanduser() / "downloaded_sessions"
+
+
+def _load_manifest_snapshot(snapshot_path: Path, run_id: str) -> CollectorSnapshot:
+    payload = _read_json(snapshot_path)
+    if payload.get("schema_version") != 1 or payload.get("run_id") != run_id:
+        raise ValueError(f"collector snapshot manifest is invalid: {snapshot_path}")
+    sessions = payload.get("sessions")
+    if not isinstance(sessions, list) or not all(
+        isinstance(session, dict) for session in sessions
+    ):
+        raise ValueError(f"collector snapshot sessions are invalid: {snapshot_path}")
+    if payload.get("session_count") != len(sessions):
+        raise ValueError(f"collector snapshot session_count is invalid: {snapshot_path}")
+    digest = _session_id_digest(sessions)
+    if payload.get("session_id_digest") != digest:
+        raise ValueError(f"collector snapshot session_id_digest is invalid: {snapshot_path}")
+    return CollectorSnapshot(tuple(sessions), "captured collector-snapshot.json", digest)
+
+
+def _legacy_session_paths(log_path: Path) -> list[PurePosixPath]:
+    paths: set[PurePosixPath] = set()
+    for line in log_path.read_text(encoding="utf-8").splitlines():
+        match = LOG_SESSION_PATTERN.search(line)
+        if match:
+            paths.add(PurePosixPath(match.group(1)))
+    if not paths:
+        raise ValueError(f"no collector session paths found in legacy log: {log_path}")
+    return sorted(paths, key=str)
+
+
+def _load_legacy_snapshot(log_path: Path, sessions_dir: Path) -> CollectorSnapshot:
+    sessions: list[dict[str, Any]] = []
+    missing: list[Path] = []
+    for relative_path in _legacy_session_paths(log_path):
+        payload_path = sessions_dir.joinpath(*relative_path.parts)
+        metadata_path = payload_path.with_suffix(f"{payload_path.suffix}.metadata.json")
+        if not metadata_path.is_file():
+            missing.append(metadata_path)
+            continue
+        metadata = _read_json(metadata_path)
+        expected_session_id = relative_path.name.removesuffix(".gz").removesuffix(".json")
+        if metadata.get("session_id") != expected_session_id:
+            raise ValueError(
+                f"collector metadata session ID does not match its path: {metadata_path}"
+            )
+        sessions.append(metadata)
+    if missing:
+        raise ValueError(
+            f"{len(missing)} historical collector metadata sidecars are missing; "
+            f"first missing path: {missing[0]}"
+        )
+    digest = _session_id_digest(sessions)
+    return CollectorSnapshot(
+        tuple(sessions),
+        "legacy run.log plus matching collector metadata sidecars",
+        digest,
+    )
+
+
+def load_collector_snapshot(
+    run_dir: Path, sessions_dir: Path | None
+) -> CollectorSnapshot:
+    run_id = run_dir.name
+    snapshot_path = run_dir / "run" / "collector-snapshot.json"
+    if snapshot_path.is_file():
+        return _load_manifest_snapshot(snapshot_path, run_id)
+    if sessions_dir is None:
+        raise ValueError(
+            "legacy run has no collector-snapshot.json and no collector sessions "
+            "directory is configured"
+        )
+    return _load_legacy_snapshot(run_dir / "run" / "run.log", sessions_dir)
+
+
+def build_snapshot_rows(snapshot: CollectorSnapshot) -> list[SnapshotRow]:
+    counts: Counter[str] = Counter()
+    participants: dict[str, set[str]] = defaultdict(set)
+    durations: Counter[str] = Counter()
+    samples: Counter[str] = Counter()
+    all_participants: set[str] = set()
+    for session in snapshot.sessions:
+        mode = str(session.get("vehicle_type") or "unknown").strip().lower()
+        participant = str(session.get("participant_id") or "unknown")
+        counts[mode] += 1
+        participants[mode].add(participant)
+        all_participants.add(participant)
+        durations[mode] += _duration_seconds(session) or 0
+        samples[mode] += _integer_or_none(session.get("sample_count")) or 0
+
+    rows = [
+        SnapshotRow(
+            mode=mode.title(),
+            sessions=counts[mode],
+            participants=len(participants[mode]),
+            duration=_format_duration(durations[mode]),
+            samples=samples[mode],
+        )
+        for mode in sorted(counts)
+    ]
+    rows.append(
+        SnapshotRow(
+            mode="Total",
+            sessions=len(snapshot.sessions),
+            participants=len(all_participants),
+            duration=_format_duration(sum(durations.values())),
+            samples=sum(samples.values()),
+        )
+    )
+    return rows
 
 
 def _timestamp_milliseconds(value: Any, description: str) -> int:
@@ -506,6 +700,64 @@ def render_calibration_latex(
     return "\n".join(lines)
 
 
+def render_snapshot_latex(
+    run_id: str,
+    trials: Sequence[TrialResult],
+    snapshot: CollectorSnapshot | None,
+    error: str | None,
+) -> str:
+    label_prefix = "aws-run-" + run_id.split("-")[1]
+    if snapshot is None:
+        explanation = error or "No collector snapshot source was available."
+        return "\n".join(
+            (
+                r"\paragraph{Collector snapshot unavailable.}",
+                "The collector payload snapshot could not be reconstructed reliably: "
+                + latex_escape(explanation)
+                + ".",
+                "",
+            )
+        )
+
+    rows = build_snapshot_rows(snapshot)
+    lines = [
+        f"% Collector snapshot source: {snapshot.source}.",
+        f"% Collector snapshot session ID digest: {snapshot.session_id_digest}.",
+    ]
+    lines.extend(
+        _table(
+            "Raw collector payload snapshot at AWS experiment startup.",
+            f"tab:{label_prefix}-collector-snapshot",
+            ("Mode", "Sessions", "Participants", "Duration", "Samples"),
+            [
+                (
+                    latex_escape(row.mode),
+                    str(row.sessions),
+                    str(row.participants),
+                    row.duration,
+                    f"{row.samples:,}",
+                )
+                for row in rows
+            ],
+        )
+    )
+    lines.extend(
+        (
+            r"\paragraph{Collector snapshot scope.}",
+            "The raw payload membership was reconstructed from "
+            + latex_escape(snapshot.source)
+            + f" and contains {len(snapshot.sessions)} sessions. "
+            "This is the collector state fixed at sweep startup, before label, "
+            "duration, sampling, and feature-window eligibility filters. "
+            "The MLflow trial metadata reports "
+            + latex_escape(_parameter_summary(trials, "collector_session_count"))
+            + " effective collector sessions for model training and evaluation.",
+            "",
+        )
+    )
+    return "\n".join(lines)
+
+
 def plot_bar_chart(
     labels: Sequence[str],
     values: Sequence[float],
@@ -590,7 +842,11 @@ python .\\scripts\\generate-aws-run-exploratory-report.py {run_id}
 """
 
 
-def generate_report(run_dir: Path, output_dir: Path) -> list[Path]:
+def generate_report(
+    run_dir: Path,
+    output_dir: Path,
+    sessions_dir: Path | None = None,
+) -> list[Path]:
     summary_path = run_dir / "run" / "run-summary.json"
     if not summary_path.is_file():
         raise ValueError(f"run summary does not exist: {summary_path}")
@@ -601,12 +857,22 @@ def generate_report(run_dir: Path, output_dir: Path) -> list[Path]:
     trials = load_trials(run_dir, summary)
     kind = report_kind(trials)
     output_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        snapshot = load_collector_snapshot(run_dir, sessions_dir)
+        snapshot_error = None
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        snapshot = None
+        snapshot_error = str(error)
 
     output_paths: list[Path] = []
     tables_path = output_dir / TABLES_FILENAME
     if kind == "calibration":
+        tables = render_calibration_latex(run_id, summary, trials)
+        tables += "\n" + render_snapshot_latex(
+            run_id, trials, snapshot, snapshot_error
+        )
         tables_path.write_text(
-            render_calibration_latex(run_id, summary, trials), encoding="utf-8"
+            tables, encoding="utf-8"
         )
         overall_figure = output_dir / "collector-holdout-overall-metrics-by-calibration-allocation.png"
         class_figure = output_dir / "collector-holdout-class-f1-by-calibration-allocation.png"
@@ -635,8 +901,12 @@ def generate_report(run_dir: Path, output_dir: Path) -> list[Path]:
         )
         output_paths.extend((tables_path, overall_figure, class_figure))
     else:
+        tables = render_factorial_latex(run_id, summary, trials, kind)
+        tables += "\n" + render_snapshot_latex(
+            run_id, trials, snapshot, snapshot_error
+        )
         tables_path.write_text(
-            render_factorial_latex(run_id, summary, trials, kind), encoding="utf-8"
+            tables, encoding="utf-8"
         )
         windows = sorted({trial.window_seconds for trial in trials})
         variants = ordered_variants(trials, kind)
@@ -689,6 +959,14 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         help="report destination (default: <run-dir>/exploratory-report)",
     )
+    parser.add_argument(
+        "--sessions-dir",
+        type=Path,
+        help=(
+            "collector payload directory for legacy runs without "
+            "collector-snapshot.json (default: ALL_TMD_DATA_DIR/downloaded_sessions)"
+        ),
+    )
     return parser
 
 
@@ -701,8 +979,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"error: downloaded run does not exist: {run_dir}", file=sys.stderr)
         return 1
     output_dir = args.output_dir or run_dir / "exploratory-report"
+    sessions_dir = args.sessions_dir or configured_sessions_dir(project_dir)
     try:
-        paths = generate_report(run_dir, output_dir)
+        paths = generate_report(run_dir, output_dir, sessions_dir=sessions_dir)
     except (OSError, ValueError, KeyError) as error:
         print(f"error: {error}", file=sys.stderr)
         return 1

@@ -306,10 +306,16 @@ python .\scripts\generate-aws-run-exploratory-report.py <run-id>
 The command creates `aws-results/<run-id>/exploratory-report` containing a
 LaTeX table bundle, two PNG figures, and a short regeneration README. It selects
 only MLflow trials started during that AWS run, even when the downloaded MLflow
-database also contains earlier experiments. Pressure and magnetometer sweeps
-are summarized by window duration and feature configuration; class-specific
-calibration sweeps receive overall-metric and per-mode F1 comparisons. Use
-`--results-root` or `--output-dir` to override the default locations.
+database also contains earlier experiments. The LaTeX bundle includes the raw
+collector payload snapshot captured at sweep startup. For legacy runs, snapshot
+membership is reconstructed from `run.log` and the matching immutable metadata
+sidecars beneath `ALL_TMD_DATA_DIR/downloaded_sessions`; pass `--sessions-dir`
+when that environment or `.env` setting is unavailable. If exact membership
+cannot be recovered, the bundle includes an explanatory paragraph instead of
+an inferred table. Pressure and magnetometer sweeps are summarized by window
+duration and feature configuration; class-specific calibration sweeps receive
+overall-metric and per-mode F1 comparisons. Use `--results-root` or
+`--output-dir` to override the default locations.
 
 Generate a bar chart for the top downloaded MLflow runs by one collector
 holdout metric:
