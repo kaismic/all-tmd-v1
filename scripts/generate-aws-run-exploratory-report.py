@@ -276,6 +276,77 @@ def build_snapshot_rows(snapshot: CollectorSnapshot) -> list[SnapshotRow]:
     return rows
 
 
+def derive_effective_snapshot(
+    raw_snapshot: CollectorSnapshot,
+    trials: Sequence[TrialResult],
+) -> CollectorSnapshot:
+    """Recover common effective membership from MLflow count and digest params."""
+    summaries = {
+        (
+            trial.params.get("collector_session_digest"),
+            trial.params.get("collector_session_count"),
+        )
+        for trial in trials
+    }
+    if len(summaries) != 1:
+        raise ValueError(
+            "trials do not share one effective collector session count and digest"
+        )
+    raw_digest, raw_count = summaries.pop()
+    if not raw_digest or not raw_count:
+        raise ValueError("MLflow trials do not record effective collector membership")
+    try:
+        expected_count = int(raw_count)
+    except ValueError as error:
+        raise ValueError(
+            f"MLflow collector_session_count is invalid: {raw_count!r}"
+        ) from error
+
+    labels = {label for trial in trials for label in trial.class_f1}
+    candidates = [
+        session
+        for session in raw_snapshot.sessions
+        if str(session.get("vehicle_type") or "").strip().lower() in labels
+    ]
+    excluded_count = len(candidates) - expected_count
+    if excluded_count < 0:
+        raise ValueError(
+            f"raw snapshot contains only {len(candidates)} labeled sessions, "
+            f"but MLflow records {expected_count}"
+        )
+    combination_count = math.comb(len(candidates), excluded_count)
+    if combination_count > 1_000_000:
+        raise ValueError(
+            "effective membership cannot be reconstructed safely: matching the "
+            f"recorded digest would require testing {combination_count:,} subsets"
+        )
+
+    from itertools import combinations
+
+    matches: list[tuple[dict[str, Any], ...]] = []
+    for excluded in combinations(candidates, excluded_count):
+        excluded_ids = {str(session["session_id"]) for session in excluded}
+        included = tuple(
+            session
+            for session in candidates
+            if str(session["session_id"]) not in excluded_ids
+        )
+        if _session_id_digest(included) == raw_digest:
+            matches.append(included)
+            if len(matches) > 1:
+                break
+    if len(matches) != 1:
+        raise ValueError(
+            "recorded MLflow count and digest did not identify exactly one "
+            f"effective subset (matches={len(matches)})"
+        )
+    return CollectorSnapshot(
+        matches[0],
+        "unique raw-snapshot subset matching MLflow collector membership",
+        raw_digest,
+    )
+
+
 def _timestamp_milliseconds(value: Any, description: str) -> int:
     if not isinstance(value, str):
         raise ValueError(f"run summary {description} must be an ISO timestamp")
@@ -705,6 +776,8 @@ def render_snapshot_latex(
     trials: Sequence[TrialResult],
     snapshot: CollectorSnapshot | None,
     error: str | None,
+    effective_snapshot: CollectorSnapshot | None = None,
+    effective_error: str | None = None,
 ) -> str:
     label_prefix = "aws-run-" + run_id.split("-")[1]
     if snapshot is None:
@@ -748,10 +821,60 @@ def render_snapshot_latex(
             + latex_escape(snapshot.source)
             + f" and contains {len(snapshot.sessions)} sessions. "
             "This is the collector state fixed at sweep startup, before label, "
-            "duration, sampling, and feature-window eligibility filters. "
-            "The MLflow trial metadata reports "
-            + latex_escape(_parameter_summary(trials, "collector_session_count"))
-            + " effective collector sessions for model training and evaluation.",
+            "duration, sampling, and feature-window eligibility filters.",
+            "",
+        )
+    )
+    if effective_snapshot is None:
+        explanation = effective_error or "No common effective membership was available."
+        lines.extend(
+            (
+                r"\paragraph{Effective collector snapshot unavailable.}",
+                "The effective collector membership could not be reconstructed "
+                "reliably: "
+                + latex_escape(explanation)
+                + ".",
+                "",
+            )
+        )
+        return "\n".join(lines)
+
+    effective_rows = build_snapshot_rows(effective_snapshot)
+    lines.extend(
+        (
+            f"% Effective collector snapshot source: {effective_snapshot.source}.",
+            "% Effective collector snapshot session ID digest: "
+            f"{effective_snapshot.session_id_digest}.",
+        )
+    )
+    lines.extend(
+        _table(
+            "Effective collector session snapshot used by all MLflow trials.",
+            f"tab:{label_prefix}-effective-collector-snapshot",
+            ("Mode", "Sessions", "Participants", "Duration", "Samples"),
+            [
+                (
+                    latex_escape(row.mode),
+                    str(row.sessions),
+                    str(row.participants),
+                    row.duration,
+                    f"{row.samples:,}",
+                )
+                for row in effective_rows
+            ],
+        )
+    )
+    labels = sorted({label.title() for trial in trials for label in trial.class_f1})
+    lines.extend(
+        (
+            r"\paragraph{Effective collector snapshot scope.}",
+            f"The {len(effective_snapshot.sessions)}-session effective membership "
+            "is the unique subset of the raw snapshot restricted to the configured "
+            "transport modes ("
+            + latex_escape(", ".join(labels))
+            + ") whose canonical session-ID digest matches the value recorded by "
+            "every MLflow trial. It therefore reflects label and feature eligibility "
+            "filtering before calibration/holdout splitting.",
             "",
         )
     )
@@ -863,13 +986,28 @@ def generate_report(
     except (OSError, ValueError, json.JSONDecodeError) as error:
         snapshot = None
         snapshot_error = str(error)
+    if snapshot is None:
+        effective_snapshot = None
+        effective_error = "raw collector snapshot is unavailable"
+    else:
+        try:
+            effective_snapshot = derive_effective_snapshot(snapshot, trials)
+            effective_error = None
+        except ValueError as error:
+            effective_snapshot = None
+            effective_error = str(error)
 
     output_paths: list[Path] = []
     tables_path = output_dir / TABLES_FILENAME
     if kind == "calibration":
         tables = render_calibration_latex(run_id, summary, trials)
         tables += "\n" + render_snapshot_latex(
-            run_id, trials, snapshot, snapshot_error
+            run_id,
+            trials,
+            snapshot,
+            snapshot_error,
+            effective_snapshot,
+            effective_error,
         )
         tables_path.write_text(
             tables, encoding="utf-8"
@@ -903,7 +1041,12 @@ def generate_report(
     else:
         tables = render_factorial_latex(run_id, summary, trials, kind)
         tables += "\n" + render_snapshot_latex(
-            run_id, trials, snapshot, snapshot_error
+            run_id,
+            trials,
+            snapshot,
+            snapshot_error,
+            effective_snapshot,
+            effective_error,
         )
         tables_path.write_text(
             tables, encoding="utf-8"

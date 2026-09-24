@@ -171,3 +171,56 @@ def test_snapshot_failure_renders_explanation() -> None:
 
     assert "Collector snapshot unavailable" in rendered
     assert "metadata sidecars are unavailable" in rendered
+
+
+def test_effective_snapshot_matches_mlflow_count_and_digest() -> None:
+    sessions = (
+        {
+            "session_id": "bus-kept",
+            "vehicle_type": "bus",
+            "participant_id": "participant_001",
+            "duration_seconds": 60,
+            "sample_count": 100,
+        },
+        {
+            "session_id": "bus-filtered",
+            "vehicle_type": "bus",
+            "participant_id": "participant_002",
+            "duration_seconds": 30,
+            "sample_count": 50,
+        },
+        {
+            "session_id": "car-kept",
+            "vehicle_type": "car",
+            "participant_id": "participant_002",
+            "duration_seconds": 120,
+            "sample_count": 200,
+        },
+        {
+            "session_id": "tram-not-labelled",
+            "vehicle_type": "tram",
+            "participant_id": "participant_003",
+            "duration_seconds": 180,
+            "sample_count": 300,
+        },
+    )
+    expected_sessions = (sessions[0], sessions[2])
+    expected_digest = MODULE._session_id_digest(expected_sessions)
+    raw_snapshot = MODULE.CollectorSnapshot(sessions, "test snapshot", "raw-digest")
+    result = MODULE.derive_effective_snapshot(
+        raw_snapshot,
+        [
+            trial(
+                0,
+                collector_session_count="2",
+                collector_session_digest=expected_digest,
+            )
+        ],
+    )
+
+    assert [session["session_id"] for session in result.sessions] == [
+        "bus-kept",
+        "car-kept",
+    ]
+    assert result.session_id_digest == expected_digest
+    assert MODULE.build_snapshot_rows(result)[-1].samples == 300

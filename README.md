@@ -306,16 +306,18 @@ python .\scripts\generate-aws-run-exploratory-report.py <run-id>
 The command creates `aws-results/<run-id>/exploratory-report` containing a
 LaTeX table bundle, two PNG figures, and a short regeneration README. It selects
 only MLflow trials started during that AWS run, even when the downloaded MLflow
-database also contains earlier experiments. The LaTeX bundle includes the raw
-collector payload snapshot captured at sweep startup. For legacy runs, snapshot
+database also contains earlier experiments. The LaTeX bundle includes both the
+raw collector payload snapshot captured at sweep startup and, when all trials
+share one membership, an effective-session table validated against MLflow's
+recorded session count and SHA-256 digest. For legacy runs, raw snapshot
 membership is reconstructed from `run.log` and the matching immutable metadata
 sidecars beneath `ALL_TMD_DATA_DIR/downloaded_sessions`; pass `--sessions-dir`
-when that environment or `.env` setting is unavailable. If exact membership
-cannot be recovered, the bundle includes an explanatory paragraph instead of
-an inferred table. Pressure and magnetometer sweeps are summarized by window
-duration and feature configuration; class-specific calibration sweeps receive
-overall-metric and per-mode F1 comparisons. Use `--results-root` or
-`--output-dir` to override the default locations.
+when that environment or `.env` setting is unavailable. If either membership
+cannot be recovered exactly, the bundle includes an explanatory paragraph
+instead of an inferred table. Pressure and magnetometer sweeps are summarized
+by window duration and feature configuration; class-specific calibration
+sweeps receive overall-metric and per-mode F1 comparisons. Use `--results-root`
+or `--output-dir` to override the default locations.
 
 Generate a bar chart for the top downloaded MLflow runs by one collector
 holdout metric:
