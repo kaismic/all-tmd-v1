@@ -1,7 +1,65 @@
-% Include this section within Preliminary Experiments, after the general
+% Include these subsections within Preliminary Experiments, after the general
 % methodology and before the individual experiment results.
-% Historical code: 9c676a2c, a46cc6a0, and c11f9a1a respectively.
-% Run evidence: aws-results/<run-id>/work and the per-trial MLflow artifacts.
+% Local evidence: exploratory-report-Transfer-v2 and the contemporary Git code.
+% AWS code: 9c676a2c, a46cc6a0, and c11f9a1a respectively.
+% AWS evidence: aws-results/<run-id>/work and per-trial MLflow artifacts.
+\subsection{Initial Sensor and Window Size Experiment}
+\label{sec:preliminary-local-methodology}
+
+The initial sensor and window size sweep was run locally as the MLflow
+experiment \emph{ALL-TMD Transfer v2}. Its exploratory report (commit
+\texttt{4ecd4c6}) contains one completed result for each of 12 combinations:
+10-, 20-, 30-, and
+60-second windows crossed with accelerometer and gyroscope; those sensors plus
+magnetometer; and those three plus pressure. The contemporary trial template
+at commit \texttt{4cd6e27} pairs those windows with 5-, 10-, 15-, and
+30-second steps. Each run trained on US-TMD and selected Sydney collector
+sessions, with bus, car, and train as the transport classes. Vector
+sensor readings were reduced to their Euclidean magnitudes before window
+aggregation; pressure was used as a scalar. That template specifies
+accelerometer and gyroscope mean, standard deviation, range, and minimum;
+magnetometer standard deviation and
+range; and pressure standard deviation, range, and change from the start of
+each window. The archived report identifies sensor sets, but does not preserve
+the executed feature lists, so these specific aggregations cannot be
+independently confirmed for the local sweep.
+
+The pipeline code at commit \texttt{4cd6e27} groups Sydney windows by
+participant, device, and recording session. It assigns entire groups to
+calibration or holdout with one label-stratified random split, then forms five shuffled, grouped
+cross-validation folds within calibration. Each candidate model trains on all
+US-TMD windows and the non-validation Sydney calibration groups; the pooled
+out-of-fold Sydney predictions supply the macro-F1 selection score. The
+selected model is fitted on US-TMD plus all Sydney calibration windows and
+evaluated once on the Sydney holdout. Thus, cross-validation selects a model;
+the reported holdout result is from a separate session partition. The
+contemporary trial template specifies a calibration fraction of 0.5, random
+seed 42, 45 Optuna trials, and random forest, XGBoost, and multilayer
+perceptron candidates. The local trial configurations and MLflow database were
+not archived here, so those template settings cannot be verified as the exact
+settings of the executed sweep.
+
+The eight configurations without pressure had 63 effective Sydney session
+groups, with 31 in calibration and 32 in holdout. The four pressure-enabled
+configurations had 47 effective groups, with 23 in calibration and 24 in
+holdout. These counts are consistent with assigning approximately half the
+groups to calibration; they do not establish an equal split of windows or the
+seed used to select groups. Pressure eligibility changed the effective cohort,
+so the pressure comparison does not isolate the effect of one sensor. The
+exploratory report also reconstructs a common 104-session collector checkpoint
+from local checkpoint files and session metadata; that count precedes feature
+eligibility filtering and is distinct from the 63- and 47-group cohorts.
+
+\paragraph{Local reproduction limit.}
+The checked-in report was generated from the named local MLflow experiment,
+but its underlying MLflow database, executed trial configurations, split
+manifests, and immutable raw-data snapshot are not present in this repository.
+The exact execution commit, selected session IDs, and random split therefore
+cannot be reconstructed from the report table alone. The source-window quality
+policy also changed during this period: commit \texttt{cee3223} restricted
+sampling and continuity checks to Sydney windows. Without the executed commit,
+it is not possible to establish which policy governed this local sweep.
+
 \subsection{Detailed Methodology for the Three AWS Experiments}
 \label{sec:preliminary-aws-methodology}
 

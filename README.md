@@ -297,8 +297,8 @@ by a paragraph with centered equations that define the table's ranking value.
 Duplicate MLflow run IDs present in multiple downloads are included once. Use
 `--limit <count>` or `--precision <digits>` to override the defaults.
 
-The include-ready methodology for the pressure-feature, magnetometer feature,
-and calibration fraction experiments is in
+The include-ready methodology for the local initial sensor and window size
+experiment and the three AWS preliminary experiments is in
 `preliminary-reports/report-9-methodology-details.tex`. It documents the
 historical split algorithms, cross-validation, holdout evaluation, and run
 provenance alongside `preliminary-reports/report-9-snippet-v1.tex`.
