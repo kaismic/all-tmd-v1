@@ -1,0 +1,153 @@
+% Include this section within Preliminary Experiments, after the general
+% methodology and before the individual experiment results.
+% Historical code: 9c676a2c, a46cc6a0, and c11f9a1a respectively.
+% Run evidence: aws-results/<run-id>/work and the per-trial MLflow artifacts.
+\subsection{Detailed Methodology for the Three AWS Experiments}
+\label{sec:preliminary-aws-methodology}
+
+The pressure-feature, magnetometer feature, and calibration fraction experiments
+were executed from three different repository commits, as shown in
+Table~\ref{tab:preliminary-methodology-runs}. Each configuration combined
+NOR-TMD training windows with eligible Sydney collector windows. The Sydney
+collector sessions were divided into calibration and holdout sets before model
+selection. The calibration sessions contributed to training and cross-validation;
+the holdout sessions were used only for the final evaluation of the selected
+model. The unit of assignment was a recording group, identified by participant,
+device, and session, rather than an individual window. Thus, overlapping windows
+from a session could not cross the calibration/holdout boundary or a
+cross-validation fold boundary. Different sessions from the same participant
+could occur on both sides of a boundary.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Historical code and run records used for the three methods.}
+\label{tab:preliminary-methodology-runs}
+\begin{tabular}{lll}
+\hline
+\textbf{Experiment} & \textbf{AWS run ID} & \textbf{Git commit} \\
+\hline
+Pressure feature & \texttt{20260809T055942Z-9c676a2c-full} & \texttt{9c676a2c} \\
+Magnetometer feature & \texttt{20260812T125950Z-a46cc6a0-full} & \texttt{a46cc6a0} \\
+Calibration fraction & \texttt{20260814T114054Z-c11f9a1a-full} & \texttt{c11f9a1a} \\
+\hline
+\end{tabular}
+\end{table}
+
+\subsubsection{Shared data preparation and model selection}
+
+For each configured transport mode, the pipeline ingested NOR-TMD records and
+Sydney collector sessions, rejected sessions shorter than 30 seconds or longer
+than 28,800 seconds, and constructed windows separately within each session.
+Windows were 10, 20, 30, or 60 seconds long in the first two experiments, with
+steps of 5, 10, 15, or 30 seconds respectively. The calibration fraction
+experiment used only 60-second windows with a 30-second step. Accelerometer,
+gyroscope, and magnetometer vectors were reduced to Euclidean magnitudes before
+aggregation. Pressure was treated as a scalar. All configurations used the
+mean, population standard deviation, range, and minimum of accelerometer and
+gyroscope magnitudes. The experiment-specific magnetometer and pressure
+aggregations are stated below.
+
+For Sydney windows, each configured sensor had to supply at least the number of
+valid samples implied by its minimum sampling rate: 30~Hz for accelerometer,
+4~Hz for gyroscope, and 2~Hz for magnetometer or pressure. The largest gap
+between valid samples, including the window boundaries, could not exceed
+500~ms. A window failing either check for any configured sensor was discarded.
+NOR-TMD windows required at least one valid sample per configured sensor and
+did not use these Sydney sampling and continuity checks. Consequently, adding
+pressure could change which Sydney sessions yielded usable windows.
+
+Within each configuration, five shuffled \texttt{GroupKFold} folds were formed
+from the Sydney calibration groups with random seed 42. For every fold, a model
+was fitted using all NOR-TMD windows plus the Sydney calibration windows in
+the other four folds; only the excluded Sydney calibration windows supplied
+validation predictions. Optuna used a seeded Tree-structured Parzen Estimator
+to search random forest, XGBoost, and multilayer perceptron configurations,
+with a budget of 45 trials per configuration. A Hyperband pruner could stop a
+trial after an intermediate fold result. The objective for a completed trial
+was macro F1 computed from the pooled out-of-fold Sydney predictions, rather
+than the arithmetic mean of the five fold scores. Training used inverse-class-
+frequency sample weights where the classifier accepted them. The winning
+configuration was fitted again on all NOR-TMD and Sydney calibration windows;
+in this final fit, Sydney calibration sample weights were additionally doubled.
+Its macro F1 on the untouched Sydney holdout sessions was reported once. The
+holdout score is therefore not a cross-validation score.
+
+\subsubsection{Pressure-feature experiment}
+
+At commit \texttt{9c676a2c}, 12 configurations crossed four window lengths
+with three pressure choices. Every configuration used magnetometer standard
+deviation and range. The no-pressure choice omitted pressure features. The two
+pressure-enabled choices added pressure standard deviation and range, together
+with either the last minus first valid pressure reading in each window
+(window-start change) or the window mean minus the first valid pressure reading
+in its session (session-baseline change).
+
+Sydney groups were sorted by group identifier and split once using
+\texttt{StratifiedShuffleSplit} with \texttt{train\_size=0.5} and
+\texttt{random\_state=42}, stratifying by transport label. The four no-pressure
+configurations had 140 effective Sydney groups, split into 70 calibration and
+70 holdout groups. The eight pressure-enabled configurations had 104 effective
+groups, split into 52 and 52. Although the trial label mapping included bus,
+car, train, and tram, the pressure-enabled Sydney cohort contained no tram
+sessions. Therefore, a pressure comparison also changes the effective cohort
+and the classes represented in the Sydney holdout. The 0.5 setting refers to
+groups; window counts need not be equal between partitions.
+
+\subsubsection{Magnetometer feature experiment}
+
+At commit \texttt{a46cc6a0}, 12 configurations crossed the same four
+window/step pairs with three magnetometer feature sets: standard deviation and
+range; those two plus minimum; and those three plus mean. Pressure was omitted
+throughout. Bus, car, and train were the configured classes. The same one-time,
+label-stratified group split used \texttt{train\_size=0.5} and seed 42. All
+configurations used 152 effective Sydney groups, divided into 76 calibration
+and 76 holdout groups. The actual window counts differed between partitions.
+
+\subsubsection{Calibration fraction experiment}
+
+At commit \texttt{c11f9a1a}, all three trials used 60-second windows stepped
+by 30 seconds, no pressure, and magnetometer standard deviation, range, and
+minimum. The 155 effective Sydney groups comprised 38 bus, 71 car, and 46
+train groups. This commit replaced the single stratified shuffle split with a
+seeded per-class procedure. Groups were sorted by identifier within each
+class; a NumPy random generator seeded with 42 permuted each class in bus,
+car, train order. For each class, the number assigned to calibration was the
+floor of its group count times its requested fraction, bounded to leave at
+least one group in each partition. The remainder formed the holdout. The
+resulting allocations are shown in Table~\ref{tab:preliminary-methodology-calibration}.
+
+\begin{table}[htbp]
+\centering
+\small
+\caption{Calibration and holdout Sydney group counts by trial. Fractions and
+counts are ordered bus, car, train.}
+\label{tab:preliminary-methodology-calibration}
+\begin{tabular}{lccc}
+\hline
+\textbf{Trial} & \textbf{Calibration fractions} & \textbf{Calibration groups} & \textbf{Holdout groups} \\
+\hline
+A & $0.8,\;0.4,\;0.4$ & $30,\;28,\;18$ & $8,\;43,\;28$ \\
+B & $0.4,\;0.8,\;0.4$ & $15,\;56,\;18$ & $23,\;15,\;28$ \\
+C & $0.4,\;0.4,\;0.8$ & $15,\;28,\;36$ & $23,\;43,\;10$ \\
+\hline
+\end{tabular}
+\end{table}
+
+\paragraph{Reproduction record.}
+For each ID in Table~\ref{tab:preliminary-methodology-runs}, the matching
+\texttt{aws-results} directory contains \texttt{run/run-summary.json} with
+the executed Git commit, and \texttt{work} contains trial configurations and
+split manifests. The \texttt{mlflow/mlartifacts} directory retains per-trial
+copies of the split manifests and metrics. These records contain the actual
+configuration, feature-frame fingerprint, row indices, and five fold assignments
+for each trial. In the first two runs, a fixed seed reproduces the split only
+when the same eligible sessions and ordered feature rows are supplied. Neither
+run captured an immutable raw collector payload snapshot at execution time;
+their effective collector cohorts were reconstructed from the available run
+records. The calibration fraction run recorded a collector membership snapshot,
+but reproduction still requires the same source data and preprocessing. Its
+three trials reused one feature-work directory because their feature settings
+were identical, so the final files in that directory represent only the last
+trial. The separate per-trial MLflow artifacts preserve each trial's split and
+metrics and are the authoritative records for the counts above.
