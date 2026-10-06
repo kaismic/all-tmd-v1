@@ -73,6 +73,38 @@ Average & 0.6173 & 0.6771 & 0.7453 & 0.6799 \\
 \end{threeparttable}
 \end{table}
 
+% Collector holdout metrics from the local ALL-TMD Transfer v2 MLflow experiment.
+% Pressure-enabled runs use a smaller effective collector cohort.
+\begin{table}[htbp]
+\centering
+\caption{Collector holdout accuracy and balanced accuracy for each initial sensor and window size run.}
+\label{tab:transfer-v2-run-accuracy}
+\begin{threeparttable}
+\small
+\begin{tabular}{llrr}
+\hline
+\textbf{Window (s)} & \textbf{Sensors}\tnote{1} & \textbf{Accuracy} & \textbf{Balanced accuracy} \\
+\hline
+10 & A, G & 0.7458 & 0.6408 \\
+10 & A, G, M & 0.8419 & 0.6527 \\
+10 & A, G, M, B & 0.8529 & 0.8213 \\
+20 & A, G & 0.7821 & 0.7211 \\
+20 & A, G, M & 0.8901 & 0.6961 \\
+20 & A, G, M, B & 0.8949 & 0.7867 \\
+30 & A, G & 0.8060 & 0.7421 \\
+30 & A, G, M & 0.9042 & 0.6835 \\
+30 & A, G, M, B & 0.9276 & 0.7932 \\
+60 & A, G & 0.7786 & 0.7665 \\
+60 & A, G, M & 0.8998 & 0.7861 \\
+60 & A, G, M, B & 0.9063 & 0.7994 \\
+\hline
+\end{tabular}
+\begin{tablenotes}
+\item[1] A: Accelerometer, G: Gyroscope, M: Magnetometer, B: Barometer
+\end{tablenotes}
+\end{threeparttable}
+\end{table}
+
 Adding the magnetometer and barometer to the base sensor set (accerlerometer and gyroscope) displayed increase in classification performance.  All four trials that used pressure outperformed the eight trials without it, but the pressure-enabled trials used a smaller subset of session groups because built-in barometer was not available for all devices. The apparent gain therefore confounds the effect of pressure data with the inherent difference in training and testing dataset.
 
 The increase in window length also monotonic increase in average macro F1 score. This was anticipated because longer windows can suppress transient noise and provide more observations for stable statistical features. However, 30-second pressure run had the highest score than that of 60-second pressure. This is likely due to small dataset size and data noise. The results are reported in Table~\ref{tab:transfer-v2-run-f1}.
