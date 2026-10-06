@@ -302,6 +302,9 @@ and calibration fraction experiments is in
 `preliminary-reports/report-9-methodology-details.tex`. It documents the
 historical split algorithms, cross-validation, holdout evaluation, and run
 provenance alongside `preliminary-reports/report-9-snippet-v1.tex`.
+`preliminary-reports/report-9-snippet-v2.tex` extends that snippet with
+collector holdout accuracy and balanced accuracy for every individual run in
+the pressure-feature, magnetometer-feature, and calibration-fraction experiments.
 
 Generate a self-contained exploratory report beneath one downloaded AWS run:
 
