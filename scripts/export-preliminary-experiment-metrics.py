@@ -20,7 +20,7 @@ from typing import Any, Sequence
 
 ROOT = Path(__file__).resolve().parents[1]
 FIELDS = (
-    "experiment_name", "run_id", "transport_mode", "support",
+    "run_id", "transport_mode", "support",
     "precision", "recall", "f1",
 )
 EXPERIMENTS = (
@@ -130,7 +130,6 @@ def collect_rows(
             ):
                 raise ValueError(f"{path}: invalid support for {mode}")
             rows.append({
-                "experiment_name": title,
                 "run_id": run_id,
                 "transport_mode": mode,
                 "support": int(support),
