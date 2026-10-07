@@ -21,7 +21,7 @@ from typing import Any, Sequence
 ROOT = Path(__file__).resolve().parents[1]
 FIELDS = (
     "experiment_name", "run_id", "transport_mode", "support",
-    "precision", "recall", "f1", "accuracy",
+    "precision", "recall", "f1",
 )
 EXPERIMENTS = (
     ("initial-sensor-window-size", "Initial Sensor and Window Size Experiment", None, 12),
@@ -117,7 +117,6 @@ def collect_rows(
         modes = set(report) - SUMMARY_KEYS
         if modes != expected_modes:
             raise ValueError(f"{path}: unexpected transport modes: {sorted(modes)}")
-        accuracy = score(holdout["accuracy"], f"{path}: accuracy")
         trial_index = metrics["trial_index"]
         if isinstance(trial_index, bool) or not isinstance(trial_index, int):
             raise ValueError(f"{path}: invalid trial_index")
@@ -137,8 +136,7 @@ def collect_rows(
                 "support": int(support),
                 "precision": score(values["precision"], f"{path}: {mode} precision"),
                 "recall": score(values["recall"], f"{path}: {mode} recall"),
-                "f1": score(values["f1-score"], f"{path}: {mode} f1"),
-                "accuracy": accuracy,
+                "f1": score(values["f1-score"], f"{path}: {mode} f1")
             })
         if sum(row["support"] for row in rows) != holdout["rows"]:
             raise ValueError(f"{path}: class supports do not sum to holdout rows")
