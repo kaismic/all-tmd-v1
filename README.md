@@ -307,12 +307,20 @@ collector holdout accuracy and balanced accuracy for every individual run in
 the local initial sensor and window size experiment and the pressure-feature,
 magnetometer-feature, and calibration-fraction experiments.
 
-Detailed per-transport-mode CSV exports for all four experiments are in
-[`reports/`](reports/README.md). They cover 39 runs and 129 run/mode rows,
-including holdout and calibration metrics, confusion counts, feature settings,
-selected model parameters, and artifact provenance. The reports README
-defines accuracy, documents historical configuration limits, and explains
-zero-support tram rows and differences from the preliminary narrative.
+Per-transport-mode CSV exports for all four experiments are in
+[`reports/`](reports/README.md), covering 39 runs and 129 run/mode rows.
+Each CSV contains only `experiment_name`, `run_id`, `transport_mode`,
+`support`, `precision`, `recall`, `f1`, and `accuracy`. Metrics describe
+collector holdout windows; accuracy is the overall run accuracy repeated
+for each mode. Regenerate all four files from the original MLflow artifacts:
+
+```powershell
+python .\scripts\export-preliminary-experiment-metrics.py
+```
+
+The exporter uses only Python's standard library. It accepts
+`--local-work-root`, `--results-root`, and `--output-dir`; the reports README
+documents defaults, source selection, and zero-support tram rows.
 
 Generate a self-contained exploratory report beneath one downloaded AWS run:
 
