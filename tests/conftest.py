@@ -9,6 +9,12 @@ import yaml
 from all_tmd.config import PipelineConfig
 
 
+def pytest_configure(config):
+    basetemp = config.getoption("basetemp")
+    if basetemp is not None:
+        Path(basetemp).parent.mkdir(parents=True, exist_ok=True)
+
+
 @pytest.fixture
 def config_factory(tmp_path):
     def factory(

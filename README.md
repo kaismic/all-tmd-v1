@@ -843,5 +843,8 @@ python -m all_tmd.cli --trial-index 0 train
 ## Tests
 
 ```powershell
-pytest
+python -m pytest -q --basetemp=.pytest_cache/acceptance
 ```
+
+The test setup creates the parent of `--basetemp` when needed, so this command
+also works before pytest has created `.pytest_cache` on a fresh checkout.
